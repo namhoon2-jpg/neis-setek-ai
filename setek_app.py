@@ -13,9 +13,7 @@ from duckduckgo_search import DDGS
 # ==========================================
 APP_PASSWORD = "2848" 
 
-# 읽기용 URL (웹에 게시 CSV)
 GSHEET_CSV_URL = st.secrets.get("GSHEET_CSV_URL", "")
-# 쓰기용 URL (Apps Script 웹 앱)
 GSHEET_WEBAPP_URL = st.secrets.get("GSHEET_WEBAPP_URL", "")
 
 st.set_page_config(page_title="NEIS 세특 AI 어시스턴트", layout="wide")
@@ -78,20 +76,17 @@ st.title("📝 NEIS 세특 AI 어시스턴트")
 with st.sidebar:
     st.header("🧠 AI 지식 저장소")
     
-    # [핵심] 업로드한 엑셀을 구글 시트에 영구 저장
-    db_file = st.file_uploader("새로운 가이드라인/우수사례 추가", type=["xlsx"], help="여기에 올린 데이터는 구글 시트에 영구적으로 누적 저장됩니다.")
+    db_file = st.file_uploader("새로운 가이드라인/우수사례 추가 (.xlsx)", help="여기에 올린 데이터는 구글 시트에 영구적으로 누적 저장됩니다.")
     if db_file and st.button("💾 구글 시트에 영구 누적하기", use_container_width=True):
-        with st.spinner("데이터를 추출하여 구글 시트로 전송 중입니다..."):
+        with st.spinner("데이터를 구글 시트로 전송 중입니다..."):
             df = pd.read_excel(db_file)
             new_texts = df.iloc[:, 0].dropna().astype(str).tolist()
             
             if GSHEET_WEBAPP_URL:
                 try:
-                    # 구글 시트(Apps Script)로 데이터 전송
                     response = requests.post(GSHEET_WEBAPP_URL, json={"texts": new_texts})
                     if response.status_code == 200:
                         st.success(f"✅ {len(new_texts)}개의 지식이 구글 시트에 영구 저장되었습니다!")
-                        # 방금 올린 데이터를 내 뇌(세션)에도 즉시 동기화
                         sync_with_gsheet()
                     else:
                         st.error("구글 시트 전송 중 오류가 발생했습니다.")
@@ -108,30 +103,35 @@ with st.sidebar:
         st.success(f"현재 총 {count}개의 지식이 뇌에 탑재되었습니다.")
 
     st.divider()
-    subject = st.selectbox("과목명 선택", ["미적분", "확률과 통계", "기하", "문학", "동아시아사", "물리학Ⅰ", "기타(직접입력)"])
-    if subject == "기타(직접입력)": subject = st.text_input("과목명을 입력하세요")
-        
-    grade_level = st.text_input("성취도", placeholder="예: A")
-    teacher_eval = st.text_area("관찰 팩트", height=100)
-    pdf_file = st.file_uploader("보고서(PDF)", type=["pdf"])
+    
+    subject = st.text_input("과목명", placeholder="예: 미적분, 문학, 동아시아사")
+    grade_level = st.text_input("성취도/등급", placeholder="예: A (또는 2등급)")
+    teacher_eval = st.text_area("교사 관찰 팩트 (키워드)", height=100)
+    
+    # 💡 수정된 부분: (선택) 표시 추가
+    pdf_file = st.file_uploader("학생 보고서 (PDF) - 선택", type=["pdf"])
 
 # 첫 구동 시 가이드라인 자동 로드
 if st.session_state.authenticated and not st.session_state.db_texts and GSHEET_CSV_URL:
     sync_with_gsheet()
 
 # ==========================================
-# 5. 생성 엔진 (V7.1 코어 유지)
+# 5. 생성 엔진
 # ==========================================
 if st.button("🚀 세특 초안 생성하기", type="primary", use_container_width=True):
-    if not subject or not teacher_eval or not pdf_file:
-        st.warning("👈 과목명, 팩트, 보고서를 모두 입력해주세요.")
+    # 💡 수정된 부분: pdf_file이 없어도 경고를 띄우지 않고 넘어갑니다.
+    if not subject or not teacher_eval:
+        st.warning("👈 과목명과 관찰 팩트를 입력해주세요. (보고서는 선택사항입니다)")
     else:
-        with st.spinner("1/4: 학생 보고서를 분석 중입니다..."):
-            pdf_text = ""
-            with pdfplumber.open(pdf_file) as pdf:
-                pdf_text = "".join([pg.extract_text() for pg in pdf.pages if pg.extract_text()])
+        with st.spinner("1/4: 학생 데이터를 분석 중입니다..."):
+            # 💡 수정된 부분: PDF가 있으면 읽고, 없으면 없다고 기록합니다.
+            pdf_text = "제출된 추가 보고서 없음"
+            if pdf_file:
+                with pdfplumber.open(pdf_file) as pdf:
+                    pdf_text = "".join([pg.extract_text() for pg in pdf.pages if pg.extract_text()])
             
         with st.spinner("2/4: 최신 기술/학술 동향을 웹에서 검색 중입니다..."):
+            # PDF가 없으면 교사 관찰 팩트에서만 핵심 키워드를 뽑습니다.
             kw_p = f"다음 내용에서 핵심 트렌드 검색어 1개만 출력: {teacher_eval} {pdf_text[:500]}"
             kw = model.generate_content(kw_p).text.strip()
             try:
@@ -144,7 +144,7 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             
             bp_prompt = f"""
             당신은 최고의 고등학교 {subject} 교사입니다.
-            아래 [공통 가이드라인]을 완벽하게 지켜서, '{teacher_eval}' 내용과 유사한 방향성을 가진 
+            아래 [공통 가이드라인 및 누적 지식]을 완벽하게 지켜서, '{teacher_eval}' 내용과 유사한 방향성을 가진 
             {subject} 과목의 '가장 이상적인 세특 우수 사례' 1개를 400자 내외로 가상으로 지어내세요.
             
             [공통 가이드라인 및 누적 지식]
