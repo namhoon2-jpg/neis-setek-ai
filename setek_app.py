@@ -77,43 +77,35 @@ st.title("📝 NEIS 세특 AI 어시스턴트")
 with st.sidebar:
     st.header("🧠 AI 지식 저장소")
     
-    db_file = st.file_uploader("새로운 가이드라인/우수사례 추가 (.xlsx)", help="여기에 올린 데이터는 구글 시트에 영구적으로 누적 저장됩니다.")
+    db_file = st.file_uploader("새로운 가이드라인/우수사례 추가 (.xlsx)")
     if db_file and st.button("💾 구글 시트에 영구 누적하기", use_container_width=True):
-        with st.spinner("데이터를 구글 시트로 전송 중입니다..."):
+        with st.spinner("데이터를 전송 중입니다..."):
             df = pd.read_excel(db_file)
             new_texts = df.iloc[:, 0].dropna().astype(str).tolist()
-            
             if GSHEET_WEBAPP_URL:
                 try:
                     response = requests.post(GSHEET_WEBAPP_URL, json={"texts": new_texts})
                     if response.status_code == 200:
-                        st.success(f"✅ {len(new_texts)}개의 지식이 구글 시트에 영구 저장되었습니다!")
+                        st.success(f"✅ {len(new_texts)}개의 지식 저장 완료!")
                         sync_with_gsheet()
-                    else:
-                        st.error("구글 시트 전송 중 오류가 발생했습니다.")
-                except Exception as e:
-                    st.error(f"통신 에러: {e}")
-            else:
-                st.error("Secrets에 GSHEET_WEBAPP_URL이 설정되지 않았습니다.")
-
+                except Exception as e: st.error(f"에러: {e}")
+            else: st.error("GSHEET_WEBAPP_URL 누락")
     st.divider()
     
     st.caption("현재 기억 상태")
     if st.button("🔄 최신 지식 불러오기", use_container_width=True):
         count = sync_with_gsheet()
-        st.success(f"현재 총 {count}개의 지식이 뇌에 탑재되었습니다.")
+        st.success(f"현재 총 {count}개의 지식 탑재.")
 
     st.divider()
-    
     st.header("📏 세특 설정")
-    target_bytes = st.slider("목표 나이스 바이트 수", min_value=500, max_value=1500, value=1500, step=100)
+    target_bytes = st.slider("목표 절대 최대치 (Bytes)", min_value=500, max_value=1500, value=1500, step=100)
     st.session_state.target_bytes = target_bytes
     
     st.divider()
-    
-    subject = st.text_input("과목명", placeholder="예: 미적분, 문학, 동아시아사")
-    grade_level = st.text_input("성취도/등급", placeholder="예: A (또는 2등급)")
-    teacher_eval = st.text_area("교사 관찰 팩트 (키워드)", placeholder="예: 발표에서 오개념 수정함. 조장으로서 역할 다함.", height=100)
+    subject = st.text_input("과목명", placeholder="예: 미적분, 문학")
+    grade_level = st.text_input("성취도/등급", placeholder="예: A")
+    teacher_eval = st.text_area("교사 관찰 팩트 (키워드)", placeholder="예: 발표에서 오개념 수정함. 조장 역할 수행.", height=100)
     pdf_file = st.file_uploader("학생 보고서 (PDF) - 선택", type=["pdf"])
 
 if st.session_state.authenticated and not st.session_state.db_texts and GSHEET_CSV_URL:
@@ -124,7 +116,7 @@ if st.session_state.authenticated and not st.session_state.db_texts and GSHEET_C
 # ==========================================
 if st.button("🚀 세특 초안 생성하기", type="primary", use_container_width=True):
     if not subject or not teacher_eval:
-        st.warning("👈 과목명과 관찰 팩트를 입력해주세요. (보고서는 선택사항입니다)")
+        st.warning("👈 과목명과 관찰 팩트를 입력해주세요.")
     else:
         with st.spinner("1/4: 학생 데이터를 분석 중입니다..."):
             pdf_text = "제출된 추가 보고서 없음"
@@ -132,25 +124,24 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
                 with pdfplumber.open(pdf_file) as pdf:
                     pdf_text = "".join([pg.extract_text() for pg in pdf.pages if pg.extract_text()])
             
-        with st.spinner("2/4: 최신 기술/학술 동향을 웹에서 검색 중입니다..."):
+        with st.spinner("2/4: 최신 동향 검색 중..."):
             kw_p = f"다음 내용에서 핵심 트렌드 검색어 1개만 출력: {teacher_eval} {pdf_text[:500]}"
             kw = model.generate_content(kw_p).text.strip()
             try:
                 results = DDGS().text(f"{kw} 최신 연구 동향", max_results=1)
                 trend = results[0]['body'] if results else "정보 없음"
-            except: trend = "검색 지연"
+            except: trend = "검색 생략"
 
-        with st.spinner(f"3/4: AI가 '{subject}' 과목의 최우수 사례 뼈대를 자체 설계 중입니다..."):
-            guidelines = "\n".join(st.session_state.db_texts) if st.session_state.db_texts else "객관적이고 건조한 문체로 작성할 것."
+        with st.spinner("3/4: 뼈대 설계 중..."):
+            guidelines = "\n".join(st.session_state.db_texts) if st.session_state.db_texts else "객관적이고 건조한 문체."
+            safe_chars = (st.session_state.target_bytes - 100) // 3 # 안전한 글자수 여유분 계산
             
-            # 💡 V10 핵심: 템플릿 설계 시 '활동+평가' 구조 강제
             bp_prompt = f"""
             당신은 최고의 고등학교 {subject} 교사입니다.
-            아래 [공통 가이드라인]을 지켜서 '{subject}' 과목의 '가장 이상적인 세특 우수 사례' 1개를 가상으로 지어내세요.
+            아래 [공통 가이드라인]을 지켜서 '{subject}' 과목의 세특 우수 사례 1개를 가상으로 작성하세요.
             
-            [신뢰성 확보를 위한 절대 구조]
-            반드시 "학생의 구체적인 활동 팩트"를 먼저 서술하고, 바로 뒤에 그 활동에 대한 "교사의 객관적이고 짧은 평가(인사이트)"가 이어지는 구조로 작성하세요.
-            (예시: ~를 탐구하여 분석함. 이를 통해 ~한 논리적 추론 능력을 확인함.)
+            [신뢰성 구조]
+            "학생의 실제 활동(팩트)" + "교사의 객관적이고 짧은 평가" 패턴으로만 구성하세요.
             
             [공통 가이드라인]
             {guidelines}
@@ -158,26 +149,24 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             best_practice_template = model.generate_content(bp_prompt).text.strip()
             st.session_state.current_template = best_practice_template
 
-        with st.spinner("4/4: 학생의 팩트를 템플릿에 융합하여 최종 세특을 작성합니다..."):
-            # 💡 V10 핵심: 최종 프롬프트에도 '활동+평가' 콤보 강조
+        with st.spinner("4/4: 제한된 팩트 내에서 최종 세특 작성 중..."):
             prompt = f"""
-            아래 [데이터]를 활용하여 학생의 실제 NEIS 교과세특을 작성하세요.
+            아래 [데이터]만을 활용하여 학생의 실제 NEIS 교과세특을 작성하세요.
 
             [데이터]
             - 과목명: {subject}
-            - 성취도/등급: {grade_level}
+            - 성취도: {grade_level}
             - 교사 관찰 팩트: {teacher_eval}
             - 학생 보고서: {pdf_text[:2000]}
-            - 트렌드 팩트체크: {trend}
+            - 융합 트렌드: {trend}
 
-            [절대 모방해야 할 템플릿의 문장 구조]
+            [절대 모방 템플릿 (문장 구조만 모방할 것)]
             {best_practice_template}
 
-            [최종 작성 원칙 - 신뢰성 확보]
-            1. 분량: 한글 기준 약 {st.session_state.target_bytes//3}자 (나이스 {st.session_state.target_bytes}바이트).
-            2. 문장 구조: 반드시 [학생의 활동 팩트 서술] + [해당 활동에 대한 교사의 짧고 객관적인 역량 평가] 패턴을 반복하여 입학사정관에게 신뢰감을 주도록 작성.
-            3. 어투: '놀라운', '매우 우수한' 등 AI 특유의 주관적 감정 찬양 절대 금지. 철저히 사실에 기반한 건조한 문체 사용.
-            4. 마크다운 기호 절대 금지. 하나의 문단으로 작성.
+            [🔥 3대 절대 엄수 규칙 🔥]
+            1. 오직 팩트 한정: [데이터]에 명시된 활동, 개념, 도서명, 역량 외에는 단 하나도 지어내거나 덧붙이지 마세요. 보고서가 없다면 관찰 팩트만으로만 작성하세요. 
+            2. 분량 절대 사수: 나이스 입력 최대치가 {st.session_state.target_bytes}바이트입니다. 초과를 막기 위해 반드시 한글 {safe_chars}자(약 {st.session_state.target_bytes - 100}바이트) 이내로 짧고 밀도 있게 마무리하세요.
+            3. 태그 금지: 결과물 맨 앞이나 뒤에 `[{subject}]`, `제목:`, `본문:` 같은 어떠한 태그도 적지 마세요. 오직 단일 문단으로 된 내용만 바로 출력하세요.
             """
             response = model.generate_content(prompt)
             st.session_state.current_result = response.text.strip().replace('\n', ' ')
@@ -187,19 +176,20 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
 # ==========================================
 if st.session_state.current_result:
     res_text = st.session_state.current_result
+    # 만약 AI가 실수로 [과목명]을 넣었다면 파이썬 단에서 한 번 더 강제 삭제 처리
+    tag_to_remove = f"[{subject}]"
+    if res_text.startswith(tag_to_remove):
+        res_text = res_text[len(tag_to_remove):].strip()
+
     st.divider()
-    st.subheader("🎯 생성된 맞춤형 세특 (신뢰성 구조 적용)")
+    st.subheader("🎯 생성된 맞춤형 세특 (팩트 한정 & 분량 제한)")
     byte_len = get_byte_length(res_text)
     target = st.session_state.target_bytes
     
-    if byte_len > 1500:
-        st.error(f"⚠️ 절대 제한 초과: {byte_len}/1500 Bytes (반드시 줄여야 합니다)")
-    elif target - 150 <= byte_len <= target + 150:
-        st.success(f"✅ 목표 분량 달성: {byte_len} Bytes (목표: {target} Bytes)")
-    elif byte_len < target - 150:
-        st.warning(f"⚠️ 목표 미달: {byte_len} Bytes (목표: {target} Bytes)")
+    if byte_len > target:
+        st.error(f"⚠️ 목표 제한 초과: {byte_len} / {target} Bytes (직접 일부 삭제가 필요합니다)")
     else:
-        st.warning(f"⚠️ 목표 초과: {byte_len} Bytes (목표: {target} Bytes)")
+        st.success(f"✅ 안전 분량 달성: {byte_len} / {target} Bytes")
     
     final_text = st.text_area("결과 확인/수정", value=res_text, height=200)
 
@@ -212,7 +202,6 @@ if st.session_state.current_result:
             "날짜": datetime.now().strftime('%Y-%m-%d %H:%M'), 
             "과목": subject, 
             "등급": grade_level, 
-            "목표바이트": target,
             "관찰팩트": teacher_eval, 
             "생성세특": final_text
         }]).to_excel(writer, index=False)
