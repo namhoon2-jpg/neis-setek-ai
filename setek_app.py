@@ -9,12 +9,14 @@ from datetime import datetime
 from duckduckgo_search import DDGS
 
 # ==========================================
-# 0. 설정 (비밀번호 및 시트 연결)
+# 0. 설정 (비밀번호 및 양방향 시트 연결)
 # ==========================================
 APP_PASSWORD = "2848" 
 
-# 구글 시트 URL (공통 가이드라인만 적힌 시트)
-GSHEET_CSV_URL = st.secrets.get("GSHEET_KNOWLEDGE_URL", "")
+# 읽기용 URL (웹에 게시 CSV)
+GSHEET_CSV_URL = st.secrets.get("GSHEET_CSV_URL", "")
+# 쓰기용 URL (Apps Script 웹 앱)
+GSHEET_WEBAPP_URL = st.secrets.get("GSHEET_WEBAPP_URL", "")
 
 st.set_page_config(page_title="NEIS 세특 AI 어시스턴트", layout="wide")
 
@@ -48,13 +50,12 @@ except Exception as e:
 if "db_texts" not in st.session_state: st.session_state.db_texts = []
 if "db_embeddings" not in st.session_state: st.session_state.db_embeddings = []
 if "current_result" not in st.session_state: st.session_state.current_result = ""
-if "current_template" not in st.session_state: st.session_state.current_template = "" # 💡 템플릿 저장소 추가
+if "current_template" not in st.session_state: st.session_state.current_template = ""
 
-def get_byte_length(text):
-    return len(text.encode('utf-8'))
+def get_byte_length(text): return len(text.encode('utf-8'))
 
 # ==========================================
-# 3. 구글 시트 동기화 (공통 가이드라인 전용)
+# 3. 구글 시트 동기화 (읽기)
 # ==========================================
 def sync_with_gsheet():
     if not GSHEET_CSV_URL: return 0
@@ -62,27 +63,53 @@ def sync_with_gsheet():
         response = requests.get(GSHEET_CSV_URL)
         df = pd.read_csv(io.StringIO(response.text))
         texts = df.iloc[:, 0].dropna().astype(str).tolist()
-        result = genai.embed_content(model=embed_model, content=texts)
-        st.session_state.db_texts = texts
-        st.session_state.db_embeddings = result['embedding']
+        if texts:
+            result = genai.embed_content(model=embed_model, content=texts)
+            st.session_state.db_texts = texts
+            st.session_state.db_embeddings = result['embedding']
         return len(texts)
     except Exception: return 0
 
 # ==========================================
-# 4. 화면 구성
+# 4. 화면 구성 및 지식 영구 누적 (쓰기)
 # ==========================================
-st.title("📝 NEIS 세특 AI 어시스턴트 (V7.1)")
+st.title("📝 NEIS 세특 AI 어시스턴트 (V8: 지식 영구 자동누적)")
 
 with st.sidebar:
-    st.header("🔄 공통 가이드라인 동기화")
-    if st.button("🌐 구글 시트 가이드라인 불러오기", use_container_width=True):
+    st.header("🧠 AI 지식 저장소 (구글 시트 연동)")
+    
+    # [핵심] 업로드한 엑셀을 구글 시트에 영구 저장
+    db_file = st.file_uploader("새로운 가이드라인/우수사례 추가", type=["xlsx"], help="여기에 올린 데이터는 구글 시트에 영구적으로 누적 저장됩니다.")
+    if db_file and st.button("💾 구글 시트에 영구 누적하기", use_container_width=True):
+        with st.spinner("데이터를 추출하여 구글 시트로 전송 중입니다..."):
+            df = pd.read_excel(db_file)
+            new_texts = df.iloc[:, 0].dropna().astype(str).tolist()
+            
+            if GSHEET_WEBAPP_URL:
+                try:
+                    # 구글 시트(Apps Script)로 데이터 전송
+                    response = requests.post(GSHEET_WEBAPP_URL, json={"texts": new_texts})
+                    if response.status_code == 200:
+                        st.success(f"✅ {len(new_texts)}개의 지식이 구글 시트에 영구 저장되었습니다!")
+                        # 방금 올린 데이터를 내 뇌(세션)에도 즉시 동기화
+                        sync_with_gsheet()
+                    else:
+                        st.error("구글 시트 전송 중 오류가 발생했습니다.")
+                except Exception as e:
+                    st.error(f"통신 에러: {e}")
+            else:
+                st.error("Secrets에 GSHEET_WEBAPP_URL이 설정되지 않았습니다.")
+
+    st.divider()
+    
+    st.caption("현재 기억 상태")
+    if st.button("🔄 최신 지식 불러오기", use_container_width=True):
         count = sync_with_gsheet()
-        if count > 0: st.success(f"✅ {count}개의 작성 규칙을 뇌에 새겼습니다!")
+        st.success(f"현재 총 {count}개의 지식이 뇌에 탑재되었습니다.")
 
     st.divider()
     subject = st.selectbox("과목명 선택", ["미적분", "확률과 통계", "기하", "문학", "동아시아사", "물리학Ⅰ", "기타(직접입력)"])
-    if subject == "기타(직접입력)":
-        subject = st.text_input("과목명을 입력하세요")
+    if subject == "기타(직접입력)": subject = st.text_input("과목명을 입력하세요")
         
     grade_level = st.text_input("성취도", placeholder="예: A")
     teacher_eval = st.text_area("관찰 팩트", height=100)
@@ -93,7 +120,7 @@ if st.session_state.authenticated and not st.session_state.db_texts and GSHEET_C
     sync_with_gsheet()
 
 # ==========================================
-# 5. 생성 엔진 (4단계 Chain-of-Thought)
+# 5. 생성 엔진 (V7.1 코어 유지)
 # ==========================================
 if st.button("🚀 세특 초안 생성하기", type="primary", use_container_width=True):
     if not subject or not teacher_eval or not pdf_file:
@@ -119,13 +146,12 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             당신은 최고의 고등학교 {subject} 교사입니다.
             아래 [공통 가이드라인]을 완벽하게 지켜서, '{teacher_eval}' 내용과 유사한 방향성을 가진 
             {subject} 과목의 '가장 이상적인 세특 우수 사례' 1개를 400자 내외로 가상으로 지어내세요.
-            이 예시는 다음 단계에서 문체와 구조의 템플릿으로 쓰입니다.
             
-            [공통 가이드라인]
+            [공통 가이드라인 및 누적 지식]
             {guidelines}
             """
             best_practice_template = model.generate_content(bp_prompt).text.strip()
-            st.session_state.current_template = best_practice_template # 💡 생성된 템플릿을 메모리에 저장
+            st.session_state.current_template = best_practice_template
 
         with st.spinner("4/4: 학생의 팩트를 템플릿에 융합하여 최종 세특을 작성합니다..."):
             prompt = f"""
@@ -139,20 +165,18 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             - 융합할 최신 트렌드: {trend}
 
             [절대 모방해야 할 최우수 사례 템플릿]
-            아래는 AI가 설계한 완벽한 템플릿입니다. 이 템플릿의 **문장 구조, 어투(~함, ~임), 전문성 깊이**를 철저하게 모방하되, 
-            내용은 반드시 [데이터]에 있는 이 학생의 실제 팩트만 반영하세요.
             {best_practice_template}
 
             [최종 작성 원칙]
             1. 분량: 한글 기준 400자 ~ 450자 사이 (하나의 문단).
-            2. 어투: '놀라운', '탁월한' 등 AI 특유의 주관적 찬양 절대 금지.
-            3. 마크다운(볼드체 등) 기호 절대 금지.
+            2. 어투: AI 특유의 주관적 찬양 절대 금지.
+            3. 마크다운 기호 절대 금지.
             """
             response = model.generate_content(prompt)
             st.session_state.current_result = response.text.strip().replace('\n', ' ')
 
 # ==========================================
-# 6. 결과 출력 및 다운로드
+# 6. 결과 출력
 # ==========================================
 if st.session_state.current_result:
     res_text = st.session_state.current_result
@@ -165,9 +189,7 @@ if st.session_state.current_result:
     
     final_text = st.text_area("결과 확인/수정", value=res_text, height=200)
 
-    # 💡 AI가 설계한 템플릿을 볼 수 있는 토글(Expander) 추가
     with st.expander("🔍 AI가 먼저 설계한 '가상의 최우수 사례 뼈대' 훔쳐보기"):
-        st.markdown("**안내:** AI가 선생님의 구글 시트 가이드라인을 바탕으로 제일 먼저 지어낸 '이상적인 모범 답안'입니다. 최종 세특은 이 글의 말투와 전개 방식을 철저히 베껴서 작성되었습니다.")
         st.info(st.session_state.current_template)
 
     output = io.BytesIO()
