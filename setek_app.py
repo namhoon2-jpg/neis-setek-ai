@@ -11,7 +11,7 @@ from duckduckgo_search import DDGS
 # ==========================================
 # 0. 설정 (비밀번호 및 양방향 시트 연결)
 # ==========================================
-APP_PASSWORD = "1234" 
+APP_PASSWORD = "2848" 
 
 GSHEET_CSV_URL = st.secrets.get("GSHEET_CSV_URL", "")
 GSHEET_WEBAPP_URL = st.secrets.get("GSHEET_WEBAPP_URL", "")
@@ -72,7 +72,7 @@ def sync_with_gsheet():
 # ==========================================
 # 4. 화면 구성 및 지식 영구 누적 (쓰기)
 # ==========================================
-st.title("📝 NEIS 세특 AI 어시스턴트 (V10: 활동+평가 구조 강제)")
+st.title("📝 NEIS 세특 AI 어시스턴트")
 
 with st.sidebar:
     st.header("🧠 AI 지식 저장소")
