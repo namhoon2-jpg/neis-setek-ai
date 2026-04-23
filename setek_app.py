@@ -112,7 +112,9 @@ with st.sidebar:
     subject = st.text_input("과목명", placeholder="예: 미적분")
     grade_level = st.text_input("성취도/등급", placeholder="예: A")
     teacher_eval = st.text_area("교사 관찰 팩트 (키워드)", height=100)
-    pdf_file = st.file_uploader("학생 보고서 (PDF) - 선택", type=["pdf"])
+    
+    # 💡 다중 파일 업로드 지원 (accept_multiple_files=True)
+    pdf_files = st.file_uploader("학생 보고서 (PDF) - 여러 개 선택 가능", type=["pdf"], accept_multiple_files=True)
 
 if st.session_state.authenticated and not st.session_state.db_texts and GSHEET_CSV_URL:
     sync_with_gsheet()
@@ -126,9 +128,12 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
     else:
         with st.spinner("1/4: 학생 데이터를 분석 중입니다..."):
             student_report_text = "제출된 추가 보고서 없음"
-            if pdf_file:
-                with pdfplumber.open(pdf_file) as pdf:
-                    student_report_text = "".join([pg.extract_text() for pg in pdf.pages if pg.extract_text()])
+            # 💡 다중 파일 텍스트 병합 처리
+            if pdf_files:
+                student_report_text = ""
+                for pdf_file in pdf_files:
+                    with pdfplumber.open(pdf_file) as pdf:
+                        student_report_text += "".join([pg.extract_text() for pg in pdf.pages if pg.extract_text()]) + "\n"
             
         with st.spinner("2/4: 최신 동향 검색 중..."):
             kw_p = f"다음 내용에서 핵심 트렌드 검색어 1개만 출력: {teacher_eval} {student_report_text[:500]}"
@@ -138,19 +143,16 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
                 trend = results[0]['body'] if results else "정보 없음"
             except: trend = "검색 생략"
 
-        with st.spinner("3/4: 입체적 뼈대 설계 중..."):
+        with st.spinner("3/4: 입체적 단일 문단 뼈대 설계 중..."):
             guidelines = "\n".join(st.session_state.db_texts) if st.session_state.db_texts else "객관적이고 건조한 문체."
             
-            # 💡 V14 핵심 1: 뼈대부터 '주어 생략' 및 '4단 구조' 강제
+            # 💡 단일 문단 및 번호 금지 강력 지시
             bp_prompt = f"""
             당신은 최고의 고등학교 {subject} 교사입니다.
-            [입체적 서사 구조] 반드시 다음의 4단계 서사 구조를 따르세요:
-            1. 동기/계기 (왜 이 탐구를 시작했는가)
-            2. 탐구 과정 (어떤 방법과 자료로 구체적으로 연구했는가)
-            3. 결과 (무엇을 알아내고 도출했는가)
-            4. 교사 평가 (이를 통해 엿보인 학생의 객관적 역량 1줄)
-            
-            [주어 완벽 생략] '학생은', '이 학생은' 등 주어를 일절 쓰지 마세요. 무조건 팩트로 바로 시작하세요.
+            [입체적 서사 구조] (계기 -> 과정 -> 결과 -> 교사 평가)의 순서로 내용이 자연스럽게 흘러가도록 작성하되, 
+            절대 숫자 번호(1, 2, 3...)나 소제목(동기, 과정 등)을 달지 마세요! 
+            줄바꿈 없이 완벽하게 이어진 '하나의 덩어리(단일 문단)'로 작성해야 합니다.
+            [주어 완벽 생략] '학생은' 등 주어를 일절 쓰지 마세요.
             [공통 가이드라인] {guidelines}
             위 규칙을 지켜 '{subject}' 과목의 세특 뼈대를 가상으로 작성하세요.
             """
@@ -162,7 +164,6 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             min_b = int(max_b * 0.8)
             min_c, max_c = min_b // 3, max_b // 3
             
-            # 💡 V14 핵심 2: 최종 생성 시에도 주어 삭제, 음슴체, 서사 구조 엄격 지시
             prompt = f"""
             아래 [데이터]만을 활용하여 학생의 실제 NEIS 교과세특을 작성하세요.
 
@@ -176,12 +177,13 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             [절대 모방 템플릿] 
             {best_practice_template}
 
-            [🔥 5대 절대 엄수 규칙 🔥]
-            1. 주어(주체) 완벽 생략: 학생의 이름은 물론이고 '학생은', '본 학생은', '자신은' 등의 주어를 일절 사용하지 마세요. 바로 활동과 사실로 문장을 시작하세요.
-            2. 입체적 서사 구조: 반드시 [활동의 계기] ➡️ [탐구 과정] ➡️ [결과] ➡️ [교사의 짧은 평가] 순서로 전개하여 활동의 깊이를 보여주세요.
-            3. 분량 타겟팅 (80~100%): 내용이 빈약해 보이지 않도록 나이스 바이트 기준 {min_b} ~ {max_b} Bytes 사이를 꽉 채우세요 (한글 약 {min_c} ~ {max_c}자). 
-            4. 완벽한 음슴체 강제: 모든 문장의 끝은 반드시 명사형 종결어미(~함, ~임, ~됨, ~보임 등)로 끝나야 합니다. '~다', '~습니다' 절대 금지.
-            5. 팩트 한정: [데이터]에 없는 정보는 절대 지어내지 마세요.
+            [🔥 6대 절대 엄수 규칙 🔥]
+            1. 하나의 통글(단일 문단): 번호(1, 2, 3...), 소제목, 줄바꿈, 마크다운(**) 기호를 절대 사용하지 말고, 모든 내용을 물 흐르듯 이어지는 하나의 문단으로만 출력하세요.
+            2. 주어 완벽 생략: 학생의 실명, '학생은', '본 학생은' 등 주어를 일절 금지합니다.
+            3. 입체적 서사 구조: 번호나 제목 없이 내용상으로만 [활동 계기] ➡️ [탐구 과정] ➡️ [결과] ➡️ [객관적 교사 평가]가 전개되도록 하세요.
+            4. 분량 타겟팅 (80~100%): 나이스 바이트 기준 {min_b} ~ {max_b} Bytes 사이를 꽉 채우세요 (한글 약 {min_c} ~ {max_c}자).
+            5. 완벽한 음슴체 강제: 모든 문장의 끝은 반드시 명사형 종결어미(~함, ~임, ~됨 등)로 끝나야 합니다. ('뛰어남', '훌륭함' 등 주관적 찬양어 제외)
+            6. 태그 출력 금지: 결과물 앞뒤에 과목명이나 어떠한 텍스트 기호도 붙이지 마세요.
             """
             response = model.generate_content(prompt)
             st.session_state.current_result = response.text.strip().replace('\n', ' ')
@@ -192,13 +194,14 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
 if st.session_state.current_result:
     res_text = st.session_state.current_result
     
-    tags_to_remove = [f"[{subject}]", "세특 우수 사례:", "가상 세특:", "최종 세특:"]
+    # 찌꺼기 태그 철저히 제거
+    tags_to_remove = [f"[{subject}]", f"{subject}", "세특 우수 사례:", "가상 세특:", "최종 세특:", "1. ", "동기:", "탐구 과정:"]
     for tag in tags_to_remove:
         if res_text.startswith(tag):
             res_text = res_text[len(tag):].strip()
 
     st.divider()
-    st.subheader("🎯 생성된 맞춤형 세특 (동기-과정-결과-평가)")
+    st.subheader("🎯 생성된 맞춤형 세특 (단일 문단 & 다중 보고서 적용)")
     
     byte_len = get_byte_length(res_text)
     max_target = st.session_state.target_bytes
@@ -213,7 +216,7 @@ if st.session_state.current_result:
     
     final_text = st.text_area("결과 확인/수정", value=res_text, height=250)
 
-    with st.expander("🔍 AI가 설계한 '4단 구조' 뼈대 훔쳐보기"):
+    with st.expander("🔍 AI가 설계한 뼈대 훔쳐보기 (참고용)"):
         st.info(st.session_state.current_template)
 
     output = io.BytesIO()
