@@ -23,7 +23,7 @@ def get_secret(key, default=""):
     except Exception:
         return default
 
-APP_PASSWORD = "1234" 
+APP_PASSWORD = "2848" 
 GSHEET_CSV_URL = get_secret("GSHEET_CSV_URL", "")
 GSHEET_WEBAPP_URL = get_secret("GSHEET_WEBAPP_URL", "")
 GEMINI_API_KEY = get_secret("GEMINI_API_KEY", "")
@@ -71,7 +71,7 @@ if "target_bytes" not in st.session_state: st.session_state.target_bytes = 1500
 def get_byte_length(text): return len(text.encode('utf-8'))
 
 # ==========================================
-# 3. 구글 시트 동기화 (읽기 - 에러 방어 적용)
+# 3. 구글 시트 동기화 (읽기)
 # ==========================================
 def sync_with_gsheet():
     if not GSHEET_CSV_URL: return 0
@@ -79,11 +79,9 @@ def sync_with_gsheet():
         response = requests.get(GSHEET_CSV_URL)
         df = pd.read_csv(io.StringIO(response.text))
         
-        # 데이터프레임이 비어있지 않은지 안전 확인
         if not df.empty and len(df.columns) > 0:
             texts = df.iloc[:, 0].dropna().astype(str).tolist()
             if texts:
-                # API 한계 초과 방지를 위해 최대 100개까지만 임베딩
                 texts = texts[:100] 
                 result = genai.embed_content(model=embed_model, content=texts)
                 st.session_state.db_texts = texts
@@ -97,7 +95,7 @@ def sync_with_gsheet():
 # ==========================================
 # 4. 화면 구성 및 지식 영구 누적 (쓰기)
 # ==========================================
-st.title("📝 NEIS 세특 AI 어시스턴트 (V19: 초강력 오류 방어판)")
+st.title("📝 NEIS 세특 AI 어시스턴트")
 
 with st.sidebar:
     st.header("🧠 AI 지식 저장소")
@@ -170,7 +168,7 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
                         with pdfplumber.open(file) as pdf:
                             for pg in pdf.pages:
                                 text = pg.extract_text()
-                                if text:  # 텍스트가 존재하는 경우에만 결합 (에러 방어)
+                                if text: 
                                     student_report_text += text + "\n"
                     except Exception as e:
                         st.warning(f"{file.name} 추출 중 오류 발생: {e}")
@@ -186,7 +184,6 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
                     kw_resp = model.generate_content(kw_p)
                     if kw_resp.parts:
                         kw = kw_resp.text.strip()
-                        # Generator 오류를 막기 위해 list로 강제 변환
                         results = list(DDGS().text(f"{kw} 최신 연구 동향", max_results=1))
                         if results:
                             trend = results[0].get('body', '정보 없음')
@@ -199,7 +196,7 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             bp_prompt = f"""
             당신은 최고의 고등학교 {subject} 교사입니다.
             [입체적 서사 구조] 반드시 (계기 -> 과정 -> 결과 -> 교사 평가)의 순서를 엄수하되, 문장 간의 원인과 결과가 매끄럽게 이어지는 논리적 문맥을 형성하세요. 단순 문장 나열이나 번호 매기기는 절대 금지합니다.
-            [관찰 가능한 행동 동사] '이해함', '깨달음', '느낌' 같은 내면 상태 동사 금지. 오직 '설명함', '적용함', '분석함' 등 관찰 가능한 행동 동사만 사용하세요.
+            [관찰 가능한 행동 동사] '이해함', '깨달음', '느낌' 금지. 오직 '설명함', '적용함', '분석함' 등 관찰 가능한 행동 동사만 사용하세요.
             [주어 및 금지어] 주어를 쓰지 말고, 본문에 '세특', '생기부' 같은 단어도 절대 쓰지 마세요.
             [공통 가이드라인] {guidelines}
             위 규칙을 지켜 '{subject}' 과목의 세특 뼈대를 가상으로 작성하세요.
@@ -227,7 +224,7 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             {best_practice_template}
 
             [🔥 9대 절대 엄수 규칙 🔥]
-            1. NEIS 호환 (수식/기호 금지): 나이스 시스템 오류 방지를 위해 모든 특수기호, 첨자, 수식을 한글로 풀어서 설명하세요.
+            1. 수식의 자연스러운 개념 서술 (NEIS 호환): LaTeX나 첨자(L_1, $\theta$)를 피하라고 해서 수식을 "코사인 괄호 열고"처럼 소리 나는 대로 유치하게 적지 마세요. 수식을 억지로 나열하지 말고, "삼각함수를 활용하여 두 링크 길이(L1, L2)와 관절 각도에 따른 끝점 좌표 계산식을 도출함"과 같이 사용한 '수학적 원리'를 자연스러운 우리말 문장으로 요약하여 서술하세요. 일반 영문자나 숫자(L1, x, y)는 그대로 써도 됩니다.
             2. 분량 폭주 절대 금지: 나이스 제한치({max_b}바이트)를 고려하여 한글 기준 절대 {max_c}자를 넘지 않도록 문장을 압축하세요. (목표: {min_c}자 ~ {max_c}자).
             3. 하나의 통글(단일 문단): 번호, 소제목, 줄바꿈, 마크다운 기호를 모두 없애고 완벽한 하나의 문단으로 묶으세요.
             4. 주어 완벽 생략: '학생은', '본 학생은', 실명 등 불필요한 주어를 원천 차단하세요.
@@ -252,7 +249,7 @@ if st.session_state.current_result:
             res_text = res_text[len(tag):].strip()
 
     st.divider()
-    st.subheader("🎯 생성된 맞춤형 세특 (에러 해결 완료)")
+    st.subheader("🎯 생성된 맞춤형 세특 (수식 서술 최적화 완료)")
     
     byte_len = get_byte_length(res_text)
     max_target = st.session_state.target_bytes
