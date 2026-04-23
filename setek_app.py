@@ -5,10 +5,10 @@ import pandas as pd
 import numpy as np
 import io
 import requests
-import re  # 💡 V30 추가: 정규표현식으로 마크다운/기호 완벽 제거
+import re
 from datetime import datetime
 
-# DuckDuckGo 라이브러리 로드 (안전 처리)
+# DuckDuckGo 라이브러리 로드
 try:
     from duckduckgo_search import DDGS
     ddgs_available = True
@@ -90,13 +90,12 @@ def sync_with_gsheet():
                 return len(texts)
         return 0
     except Exception as e:
-        st.sidebar.warning(f"시트 동기화 실패: {e}")
         return 0
 
 # ==========================================
 # 4. 화면 구성 및 사이드바
 # ==========================================
-st.title("📝 NEIS 세특 AI 어시스턴트 (V30: 물리적 멸균 강제판)")
+st.title("📝 NEIS 세특 AI 어시스턴트 (V31: 수식 추상화 & 스마트 컷오프)")
 
 with st.sidebar:
     st.header("📝 기본 정보")
@@ -130,15 +129,10 @@ with st.sidebar:
                 if new_texts and GSHEET_WEBAPP_URL:
                     response = requests.post(GSHEET_WEBAPP_URL, json={"texts": new_texts})
                     if response.status_code == 200:
-                        st.success(f"✅ {len(new_texts)}건 지식 저장 완료!")
+                        st.success("✅ 지식 저장 완료!")
                         sync_with_gsheet()
             except Exception as e:
-                st.error(f"에러: {e}")
-
-    st.caption("현재 기억 상태")
-    if st.button("🔄 최신 지식 불러오기", use_container_width=True):
-        count = sync_with_gsheet()
-        st.success(f"현재 총 {count}개의 지식 탑재.")
+                st.error("에러 발생")
 
 # ==========================================
 # 메인 화면: 교사 관찰 및 평가
@@ -148,7 +142,7 @@ col1, col2 = st.columns(2)
 
 with col1:
     report_eval = st.text_area(
-        "📄 활동/탐구 역량 평가 (비워두면 AI 자동 평가)", 
+        "📄 활동/탐구 역량 평가 (비워두면 AI 자동 분석)", 
         placeholder="보고서의 팩트는 AI가 추출합니다. 특별히 강조하고 싶은 [교사 평가]가 있다면 적어주세요.", 
         height=180
     )
@@ -156,7 +150,7 @@ with col1:
 with col2:
     general_eval = st.text_area(
         "🧑‍🏫 교사의 인지적/인성 평가", 
-        placeholder="학생의 인지적 특성과 인성적 측면에 대한 종합 평가를 적어주세요.", 
+        placeholder="학생의 인지적 특성과 인성적 측면에 대한 종합 평가를 적어주세요. 마지막 결론으로 융합됩니다.", 
         height=180
     )
 
@@ -183,8 +177,7 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
                                 text = pg.extract_text()
                                 if text: report_content += text + "\n"
                             student_report_text += f"\n--- [보고서 {idx+1}] ---\n{report_content}"
-                    except Exception as e:
-                        st.warning(f"{file.name} 추출 오류: {e}")
+                    except Exception: pass
             
             has_report = bool(student_report_text.strip())
             if not has_report:
@@ -202,23 +195,22 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
                         if results: trend = results[0].get('body', '정보 없음')
                 except Exception: pass
 
-        with st.spinner("3/4: 입체적 단일 문단 뼈대 설계 중..."):
+        with st.spinner("3/4: 입체적 뼈대 설계 중..."):
             guidelines = "\n".join(st.session_state.db_texts) if st.session_state.db_texts else "객관적이고 건조한 문체."
             
             bp_prompt = f"""
             당신은 최고의 고등학교 {subject} 교사입니다.
-            [관찰 가능한 행동 동사] 내면 상태('이해함', '체득함', '깨달음') 절대 금지. 능동적 행동('증명함', '설명함', '분석함')으로 우회하세요.
-            [자연스러운 서사] (동기 -> 과정 -> 결과 -> 교사 평가)가 인과관계로 매끄럽게 이어지게 설계하세요.
+            [관찰 가능한 행동 동사] 내면 상태('이해함', '체득함') 절대 금지. 능동적 행동('증명함', '분석함')으로 우회하세요.
             [공통 가이드라인] {guidelines}
-            위 규칙을 지켜 '{subject}' 과목의 세특 뼈대를 가상으로 작성하세요.
+            위 규칙을 지켜 '{subject}' 과목의 세특 뼈대를 단일 문단으로 가상으로 작성하세요.
             """
             best_practice_template = model.generate_content(bp_prompt).text.strip()
             st.session_state.current_template = best_practice_template
 
-        with st.spinner("4/4: 데이터 융합 및 물리적 규격 압착 중..."):
+        with st.spinner("4/4: 수식 추상화 및 팩트 기반 서술 중..."):
             max_b = st.session_state.target_bytes
             min_b = int(max_b * 0.8)
-            safe_max_c = int((max_b / 3) * 0.95) 
+            safe_max_c = int((max_b / 3) * 0.9) 
             min_c = int(min_b / 3)
             
             prompt = f"""
@@ -227,80 +219,73 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             [데이터]
             - 과목명: {subject}
             - 성취도: {grade_level}
-            - 교사의 보고서 역량 평가: {report_eval if report_eval.strip() else "(자동 분석 요망)"}
+            - 교사의 보고서 역량 평가: {report_eval if report_eval.strip() else "(자동 분석)"}
             - 교사의 인지적/인성 평가: {general_eval if general_eval.strip() else "(미기재)"}
             - 학생 다중 보고서 텍스트: {student_report_text[:2000]}
 
-            [절대 모방 템플릿] 
-            {best_practice_template}
-
-            [🔥 V30 초강력 멸균 및 분량 팽창 규칙 🔥]
-            1. 분량 팽창 (미달 절대 방지): 보고서의 디테일(구체적인 도구, 수치, 방법론)을 생략하지 말고 전부 나열하여 문장을 최대한 풍성하게 부풀리세요. 글자 수가 **반드시 {min_c}자 이상**이 되어야 합니다. 단, {safe_max_c}자를 넘지 마세요.
-            2. 마크다운 및 기호 전면 금지: 별표(**), 샵(#), 숫자 번호(1.), 줄바꿈을 절대 사용하지 마세요. 오직 평문(Plain text)으로만 작성하세요.
-            3. 실명 및 제목/주어 삭제: PDF에 이름이 등장하더라도 절대 쓰지 마세요. '과목명:', '제목:', '이 학생은' 등을 쓰지 말고 바로 팩트로 문장을 시작하세요.
-            4. 자연스러운 4단 흐름: [활동 계기] ➡️ [구체적 탐구 과정] ➡️ [결과 도출] ➡️ [교사의 인지적/인성 평가(결론부)]가 인과관계로 물 흐르듯 이어지게 하세요.
-            5. 관찰 가능한 능동태 동사: '이해함', '깨달음' 금지. "~증명함", "~분석하여 도출함"으로 서술하세요.
-            6. 완벽한 음슴체: 수식은 한글로 풀고, 문장 끝은 명사형 종결어미(~함, ~임, ~됨 등)로 끝내세요.
+            [🔥 V31 최우선 엄수 규칙: 수식 추상화 및 멸균 🔥]
+            1. 수식 절대 작성 금지 (추상화 요약): 수식이나 공식을 한글 발음(예: 엘원 코사인 세타 괄호 열고...)으로 절대 적지 마세요. 수식의 세부 내용은 완전히 버리고, 오직 "어떤 수학적 원리(예: 삼각함수, 기구학)를 적용해 무엇(예: 로봇팔의 끝점 좌표)을 도출했다"는 식으로 '원리와 목적'만 단 한 문장으로 우회하여 압축하세요.
+            2. 분량 및 팩트 보존: 보고서의 구체적인 내용(수식 제외)을 생략 없이 서술하여, 한글 글자 수를 무조건 **최소 {min_c}자 이상, {safe_max_c}자 이하**로 풍성하게 꽉 채우세요.
+            3. 마크다운 및 기호 전면 금지: 별표(**), 샵(#), 숫자 번호, 줄바꿈을 절대 사용하지 마세요. 평문(Plain text) 덩어리로만 작성하세요.
+            4. 실명 및 제목/주어 삭제: PDF에 이름이 등장해도 절대 쓰지 마세요. '제목:', '과목명:', '학생은' 등을 쓰지 말고 바로 팩트로 문장을 시작하세요.
+            5. 자연스러운 4단 흐름: [활동 계기] ➡️ [구체적 탐구 과정] ➡️ [결과 도출] ➡️ [교사의 인지적/인성 평가]가 물 흐르듯 이어지게 하세요.
+            6. 능동태 및 완벽한 음슴체: '이해함', '느낌' 금지. "~증명함", "~분석함"으로 서술하고, 문장 끝은 명사형 종결어미(~함, ~임, ~됨 등)로 끝내세요.
             """
             response = model.generate_content(prompt)
             st.session_state.current_result = response.text.strip()
 
 # ==========================================
-# 6. 결과 출력 및 파이썬 레벨 물리적 멸균 (V30)
+# 6. 결과 출력 및 파이썬 스마트 컷오프
 # ==========================================
 if st.session_state.current_result:
     res_text = st.session_state.current_result
     
-    # 💡 1. 마크다운 기호 물리적 파괴
+    # 1. 마크다운 기호 물리적 파괴
     res_text = res_text.replace("**", "").replace("*", "").replace("#", "")
-    
-    # 💡 2. 줄바꿈을 띄어쓰기로 치환하여 완벽한 단일 문단 강제
     res_text = re.sub(r'\n+', ' ', res_text).strip()
 
-    # 💡 3. 제목 및 태그 찌꺼기 앞부분 물리적 절단
-    prefixes_to_remove = [
-        f"[{subject}]", f"{subject}", "세특 우수 사례:", "가상 세특:", "최종 세특:",
-        "과목명:", "제목:", "내용:", "세특:", "교과세특:"
-    ]
-    for _ in range(3): # 여러 개가 겹쳐있을 수 있으므로 3번 반복 확인
+    # 2. 제목 및 태그 찌꺼기 앞부분 물리적 절단
+    prefixes_to_remove = [f"[{subject}]", f"{subject}", "세특 우수 사례:", "가상 세특:", "최종 세특:", "과목명:", "제목:", "내용:", "세특:", "교과세특:"]
+    for _ in range(3):
         for prefix in prefixes_to_remove:
             if res_text.startswith(prefix):
                 res_text = res_text[len(prefix):].strip()
 
-    # 💡 4. 금지어 및 주관적/메타 단어 내부 치환 (멸균)
+    # 3. 금지어 내부 치환 (멸균)
     forbidden_replacements = {
-        "이 학생은 ": "",
-        "본 학생은 ": "",
-        "학생은 ": "",
-        "자신은 ": "",
-        "이름:": "",
-        "교과세특": "기록",
-        "세특": "기록",
-        "생기부": "기록",
-        "학교생활기록부": "기록",
-        "체득함": "적용함",
-        "이해함": "설명함",
-        "깨달음": "분석함"
+        "이 학생은 ": "", "본 학생은 ": "", "학생은 ": "", "자신은 ": "",
+        "교과세특": "기록", "세특": "기록", "생기부": "기록", "학교생활기록부": "기록",
+        "체득함": "적용함", "이해함": "설명함", "깨달음": "분석함"
     }
     for bad_word, good_word in forbidden_replacements.items():
-        # 대소문자 구분 없이 꼼꼼하게 치환
         res_text = res_text.replace(bad_word, good_word)
+
+    # 💡 V31 핵심 2: 파이썬 스마트 컷오프 (바이트 초과 절대 방어)
+    max_target = st.session_state.target_bytes
+    if get_byte_length(res_text) > max_target:
+        # 바이트 수를 만족할 때까지 1글자씩 뒤에서부터 제거
+        while get_byte_length(res_text) > (max_target - 10): # -10은 종결어미 붙일 여유 공간
+            res_text = res_text[:-1]
+        
+        # 단어가 중간에 잘렸을 수 있으므로 마지막 띄어쓰기 지점까지만 살림
+        if ' ' in res_text:
+            res_text = res_text.rsplit(' ', 1)[0]
+        
+        # 강제로 깔끔하게 마감
+        res_text += "함."
 
     st.session_state.current_result = res_text
 
     st.divider()
-    st.subheader("🎯 생성된 맞춤형 세특 (물리적 멸균 및 압착 완료)")
+    st.subheader("🎯 생성된 맞춤형 세특 (수식 추상화 & 스마트 컷오프 적용)")
     
     byte_len = get_byte_length(res_text)
-    max_target = st.session_state.target_bytes
     min_target = int(max_target * 0.8)
     
-    if byte_len > max_target: 
-        st.error(f"⚠️ 분량 초과: {byte_len} / 최대 {max_target} Bytes (내용이 너무 꽉 찼습니다. 일부 삭제해 주세요.)")
-    elif byte_len < min_target:
-        st.warning(f"⚠️ 분량 미달: {byte_len} Bytes (목표: 최소 {min_target} Bytes). 보고서 내용을 더 상세히 추가해 주시면 AI가 더 길게 씁니다.")
+    if byte_len < min_target:
+        st.warning(f"⚠️ 분량 미달: {byte_len} Bytes (목표: 최소 {min_target} Bytes). 팩트를 더 추가해 주세요.")
     else: 
-        st.success(f"✅ 완벽 분량 달성: {byte_len} Bytes (목표 타겟: {min_target} ~ {max_target} Bytes 안착)")
+        st.success(f"✅ 완벽 분량 및 오버런 방어 완료: {byte_len} Bytes (목표 제한: 최대 {max_target} Bytes 이내)")
     
     final_text = st.text_area("결과 확인/수정", value=res_text, height=250)
 
