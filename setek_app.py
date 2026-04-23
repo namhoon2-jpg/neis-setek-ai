@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import io
 import requests
+import re  # 💡 V30 추가: 정규표현식으로 마크다운/기호 완벽 제거
 from datetime import datetime
 
 # DuckDuckGo 라이브러리 로드 (안전 처리)
@@ -95,7 +96,7 @@ def sync_with_gsheet():
 # ==========================================
 # 4. 화면 구성 및 사이드바
 # ==========================================
-st.title("📝 NEIS 세특 AI 어시스턴트 (V29: 자동 평가 하이브리드)")
+st.title("📝 NEIS 세특 AI 어시스턴트 (V30: 물리적 멸균 강제판)")
 
 with st.sidebar:
     st.header("📝 기본 정보")
@@ -112,7 +113,7 @@ with st.sidebar:
     db_file = st.file_uploader("지식 추가 (Excel/PDF)", type=["xlsx", "pdf"])
     
     if db_file and st.button("💾 구글 시트에 영구 누적하기", use_container_width=True):
-        with st.spinner("지식을 추출하여 동기화 중입니다..."):
+        with st.spinner("지식을 동기화 중입니다..."):
             new_texts = []
             try:
                 if db_file.name.endswith('.xlsx'):
@@ -131,10 +132,8 @@ with st.sidebar:
                     if response.status_code == 200:
                         st.success(f"✅ {len(new_texts)}건 지식 저장 완료!")
                         sync_with_gsheet()
-                else:
-                    st.warning("추출할 텍스트가 없거나 URL 설정이 누락되었습니다.")
             except Exception as e:
-                st.error(f"파일 처리 에러: {e}")
+                st.error(f"에러: {e}")
 
     st.caption("현재 기억 상태")
     if st.button("🔄 최신 지식 불러오기", use_container_width=True):
@@ -148,17 +147,16 @@ st.subheader("👨‍🏫 교사 관찰 및 평가")
 col1, col2 = st.columns(2)
 
 with col1:
-    # 💡 V29 핵심 1: AI 자동 평가 안내 멘트 반영
     report_eval = st.text_area(
         "📄 활동/탐구 역량 평가 (비워두면 AI 자동 평가)", 
-        placeholder="보고서의 팩트는 AI가 추출합니다.\n\n특별히 강조하고 싶은 [교사 평가]가 있다면 적어주세요.\n(비워두시면 AI가 보고서를 바탕으로 논리력/분석력을 스스로 분석하여 평가하고, 내용을 적으시면 '선생님 평가 + AI 평가'가 융합됩니다.)", 
+        placeholder="보고서의 팩트는 AI가 추출합니다. 특별히 강조하고 싶은 [교사 평가]가 있다면 적어주세요.", 
         height=180
     )
 
 with col2:
     general_eval = st.text_area(
         "🧑‍🏫 교사의 인지적/인성 평가", 
-        placeholder="학생의 지적 호기심, 끈기, 수업 태도 등 인지적 특성과 인성적 측면에 대한 종합 평가를 적어주세요. 세특의 마지막 결론으로 융합됩니다.\n(예: 실패를 두려워하지 않고 끊임없이 질문하며 원리를 탐구하는 태도를 지님)", 
+        placeholder="학생의 인지적 특성과 인성적 측면에 대한 종합 평가를 적어주세요.", 
         height=180
     )
 
@@ -171,7 +169,6 @@ if st.session_state.authenticated and not st.session_state.db_texts and GSHEET_C
 # 5. 생성 엔진
 # ==========================================
 if st.button("🚀 세특 초안 생성하기", type="primary", use_container_width=True):
-    # 이제 보고서만 올려도 작동할 수 있도록 유연성 강화 (과목명만 필수)
     if not subject:
         st.warning("👈 과목명을 입력해주세요.")
     else:
@@ -210,60 +207,73 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             
             bp_prompt = f"""
             당신은 최고의 고등학교 {subject} 교사입니다.
-            [관찰 가능한 행동 동사] 내면 상태('이해함', '체득함', '깨달음') 절대 금지. 눈으로 확인 가능한 능동적 행동('증명함', '설명함', '분석함')으로 우회하세요.
-            [자연스러운 서사] 동기-과정-결과-평가가 기계적인 나열이 아닌 인과관계로 매끄럽게 이어지게 설계하세요.
+            [관찰 가능한 행동 동사] 내면 상태('이해함', '체득함', '깨달음') 절대 금지. 능동적 행동('증명함', '설명함', '분석함')으로 우회하세요.
+            [자연스러운 서사] (동기 -> 과정 -> 결과 -> 교사 평가)가 인과관계로 매끄럽게 이어지게 설계하세요.
             [공통 가이드라인] {guidelines}
             위 규칙을 지켜 '{subject}' 과목의 세특 뼈대를 가상으로 작성하세요.
             """
             best_practice_template = model.generate_content(bp_prompt).text.strip()
             st.session_state.current_template = best_practice_template
 
-        with st.spinner("4/4: 데이터 융합 및 팩트 기반 풍성한 서술 중..."):
+        with st.spinner("4/4: 데이터 융합 및 물리적 규격 압착 중..."):
             max_b = st.session_state.target_bytes
             min_b = int(max_b * 0.8)
             safe_max_c = int((max_b / 3) * 0.95) 
             min_c = int(min_b / 3)
             
-            # 💡 V29 핵심 2: 프롬프트 내 조건부 평가 융합 지시
             prompt = f"""
             아래 [데이터]만을 활용하여 학생의 실제 NEIS 교과세특을 작성하세요.
 
             [데이터]
             - 과목명: {subject}
             - 성취도: {grade_level}
-            - 교사의 보고서 역량 평가: {report_eval if report_eval.strip() else "(입력된 평가 없음)"}
-            - 교사의 인지적/인성 평가: {general_eval if general_eval.strip() else "(입력된 평가 없음)"}
-            - 학생 다중 보고서 텍스트(팩트 원천): {student_report_text[:2000]}
+            - 교사의 보고서 역량 평가: {report_eval if report_eval.strip() else "(자동 분석 요망)"}
+            - 교사의 인지적/인성 평가: {general_eval if general_eval.strip() else "(미기재)"}
+            - 학생 다중 보고서 텍스트: {student_report_text[:2000]}
 
             [절대 모방 템플릿] 
             {best_practice_template}
 
-            [🔥 대전제: 역할 분담 하이브리드 및 무결성 제어 🔥]
-            1. 역할 분담 서사 (AI 자동 평가 적용): <학생 다중 보고서 텍스트>에서 탐구의 팩트(동기, 과정, 결과)를 추출하여 서술합니다. 이때 <교사의 보고서 역량 평가>가 입력되어 있다면 '선생님의 평가 + AI의 자체 분석 평가'를 융합하고, 만약 비어있다면 AI가 직접 보고서를 심층 분석하여 학생의 논리력, 분석력 등을 객관적으로 평가하여 덧붙이세요. 마지막으로 <교사의 인지적/인성 평가>가 있다면 글의 결론부에 묵직하게 배치하세요.
-            2. 분량 및 팩트 보존 (매우 중요): 보고서 팩트를 단순 요약하거나 생략하지 말고, 한글 글자 수를 무조건 **최소 {min_c}자 이상, {safe_max_c}자 이하**가 되도록 풍성하게 꽉 채워 작성하세요. 글이 짧으면 실패입니다.
-            3. 관찰 가능한 능동태 동사 강제: 내면 추측("이해함", "체득함", "깨달음") 금지. 반드시 관찰 가능한 능동 행동("~을 수학적으로 증명함", "~을 논리적으로 설명함")으로 서술하세요.
-            4. 상투적 표현 철폐: "~활동을 통해", "~뿐만 아니라", "탁월한 역량을 보여줌" 등 AI 특유의 식상한 전환어와 감정적 찬양을 완벽히 배제하세요. 오직 건조한 팩트와 객관적 평가만 남기세요.
-            5. 완벽한 음슴체: 모든 수식은 한글로 풀고, 문장 끝은 명사형 종결어미(~함, ~임, ~됨 등)로 끝내세요. 앞뒤 태그(제목 등) 절대 금지.
+            [🔥 V30 초강력 멸균 및 분량 팽창 규칙 🔥]
+            1. 분량 팽창 (미달 절대 방지): 보고서의 디테일(구체적인 도구, 수치, 방법론)을 생략하지 말고 전부 나열하여 문장을 최대한 풍성하게 부풀리세요. 글자 수가 **반드시 {min_c}자 이상**이 되어야 합니다. 단, {safe_max_c}자를 넘지 마세요.
+            2. 마크다운 및 기호 전면 금지: 별표(**), 샵(#), 숫자 번호(1.), 줄바꿈을 절대 사용하지 마세요. 오직 평문(Plain text)으로만 작성하세요.
+            3. 실명 및 제목/주어 삭제: PDF에 이름이 등장하더라도 절대 쓰지 마세요. '과목명:', '제목:', '이 학생은' 등을 쓰지 말고 바로 팩트로 문장을 시작하세요.
+            4. 자연스러운 4단 흐름: [활동 계기] ➡️ [구체적 탐구 과정] ➡️ [결과 도출] ➡️ [교사의 인지적/인성 평가(결론부)]가 인과관계로 물 흐르듯 이어지게 하세요.
+            5. 관찰 가능한 능동태 동사: '이해함', '깨달음' 금지. "~증명함", "~분석하여 도출함"으로 서술하세요.
+            6. 완벽한 음슴체: 수식은 한글로 풀고, 문장 끝은 명사형 종결어미(~함, ~임, ~됨 등)로 끝내세요.
             """
             response = model.generate_content(prompt)
-            st.session_state.current_result = response.text.strip().replace('\n', ' ')
+            st.session_state.current_result = response.text.strip()
 
 # ==========================================
-# 6. 결과 출력 및 멸균 작업
+# 6. 결과 출력 및 파이썬 레벨 물리적 멸균 (V30)
 # ==========================================
 if st.session_state.current_result:
     res_text = st.session_state.current_result
     
-    tags_to_remove = [f"[{subject}]", f"{subject}", "세특 우수 사례:", "가상 세특:", "최종 세특:", "1. ", "동기:", "탐구 과정:"]
-    for tag in tags_to_remove:
-        if res_text.startswith(tag):
-            res_text = res_text[len(tag):].strip()
+    # 💡 1. 마크다운 기호 물리적 파괴
+    res_text = res_text.replace("**", "").replace("*", "").replace("#", "")
+    
+    # 💡 2. 줄바꿈을 띄어쓰기로 치환하여 완벽한 단일 문단 강제
+    res_text = re.sub(r'\n+', ' ', res_text).strip()
 
+    # 💡 3. 제목 및 태그 찌꺼기 앞부분 물리적 절단
+    prefixes_to_remove = [
+        f"[{subject}]", f"{subject}", "세특 우수 사례:", "가상 세특:", "최종 세특:",
+        "과목명:", "제목:", "내용:", "세특:", "교과세특:"
+    ]
+    for _ in range(3): # 여러 개가 겹쳐있을 수 있으므로 3번 반복 확인
+        for prefix in prefixes_to_remove:
+            if res_text.startswith(prefix):
+                res_text = res_text[len(prefix):].strip()
+
+    # 💡 4. 금지어 및 주관적/메타 단어 내부 치환 (멸균)
     forbidden_replacements = {
         "이 학생은 ": "",
         "본 학생은 ": "",
         "학생은 ": "",
         "자신은 ": "",
+        "이름:": "",
         "교과세특": "기록",
         "세특": "기록",
         "생기부": "기록",
@@ -273,21 +283,22 @@ if st.session_state.current_result:
         "깨달음": "분석함"
     }
     for bad_word, good_word in forbidden_replacements.items():
+        # 대소문자 구분 없이 꼼꼼하게 치환
         res_text = res_text.replace(bad_word, good_word)
 
     st.session_state.current_result = res_text
 
     st.divider()
-    st.subheader("🎯 생성된 맞춤형 세특 (AI 하이브리드 평가 반영)")
+    st.subheader("🎯 생성된 맞춤형 세특 (물리적 멸균 및 압착 완료)")
     
     byte_len = get_byte_length(res_text)
     max_target = st.session_state.target_bytes
     min_target = int(max_target * 0.8)
     
     if byte_len > max_target: 
-        st.error(f"⚠️ 분량 초과: {byte_len} / 최대 {max_target} Bytes (내용이 너무 풍부합니다. 불필요한 문장을 쳐내주세요.)")
+        st.error(f"⚠️ 분량 초과: {byte_len} / 최대 {max_target} Bytes (내용이 너무 꽉 찼습니다. 일부 삭제해 주세요.)")
     elif byte_len < min_target:
-        st.warning(f"⚠️ 분량 미달: {byte_len} Bytes (목표 최소치 {min_target} Bytes). 보고서 내용을 더 상세히 추가해 주세요.")
+        st.warning(f"⚠️ 분량 미달: {byte_len} Bytes (목표: 최소 {min_target} Bytes). 보고서 내용을 더 상세히 추가해 주시면 AI가 더 길게 씁니다.")
     else: 
         st.success(f"✅ 완벽 분량 달성: {byte_len} Bytes (목표 타겟: {min_target} ~ {max_target} Bytes 안착)")
     
@@ -296,8 +307,7 @@ if st.session_state.current_result:
     with st.expander("🔍 AI가 설계한 뼈대 훔쳐보기 (참고용)"):
         st.info(st.session_state.current_template)
 
-    # 💡 V29 핵심 3: 엑셀 저장 시 빈칸 자동 평가 여부 기록
-    report_eval_record = report_eval if report_eval.strip() else "(보고서 기반 AI 자동 평가)"
+    report_eval_record = report_eval if report_eval.strip() else "(자동 분석)"
     general_eval_record = general_eval if general_eval.strip() else "(미기재)"
     combined_eval = f"[탐구 역량] {report_eval_record}\n[인지/인성] {general_eval_record}"
     
