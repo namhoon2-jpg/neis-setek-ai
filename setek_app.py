@@ -95,7 +95,7 @@ def sync_with_gsheet():
 # ==========================================
 # 4. 화면 구성 및 지식 영구 누적 (쓰기)
 # ==========================================
-st.title("📝 NEIS 세특 AI 어시스턴트 (V26: 강제 컷오프 & 금지어 차단)")
+st.title("📝 NEIS 세특 AI 어시스턴트 (V27: 대전제 복구 및 물리적 통제)")
 
 with st.sidebar:
     st.header("🧠 AI 지식 저장소")
@@ -147,7 +147,7 @@ col1, col2 = st.columns(2)
 with col1:
     report_eval = st.text_area(
         "📄 활동/탐구 역량 평가", 
-        placeholder="학생이 제출한 보고서 및 탐구 활동별로 구체적인 역량을 적어주세요.", 
+        placeholder="어떤 계기로 무엇을 탐구했고 어떤 결과를 냈는지 학생의 구체적인 '행동과 팩트'를 적어주세요. (AI가 이 내용을 최대한 길고 풍부하게 풀어냅니다)", 
         height=180
     )
 
@@ -213,14 +213,13 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             best_practice_template = model.generate_content(bp_prompt).text.strip()
             st.session_state.current_template = best_practice_template
 
-        with st.spinner("4/4: 데이터 분할 융합 및 최종 세특 작성 중..."):
-            # 💡 V26 핵심 1: 파이썬 단 글자 수 목표치 대폭 하향 (오버런 절대 방어)
+        with st.spinner("4/4: 데이터 융합 및 팩트 기반 풍성한 서술 중..."):
             max_b = st.session_state.target_bytes
             min_b = int(max_b * 0.8)
-            # 최대치를 안전하게 10% 더 깎아서 프롬프트에 전달
-            safe_max_c = int((max_b / 3) * 0.9) 
+            safe_max_c = int((max_b / 3) * 0.95) 
             min_c = int(min_b / 3)
             
+            # 💡 V27 핵심 1: 내용 부실 방지를 위한 "풍성한 서술" 명령
             prompt = f"""
             아래 [데이터]만을 활용하여 학생의 실제 NEIS 교과세특을 작성하세요.
 
@@ -230,54 +229,62 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             - 활동/탐구 역량 평가: {report_eval}
             - 교사의 인지적/인성 평가: {general_eval}
             - 학생 다중 보고서 텍스트: {student_report_text[:2000]}
-            - 융합 트렌드: {trend}
 
             [절대 모방 템플릿] 
             {best_practice_template}
 
-            [❌ 절대 금지어 사전 (이 단어들이 1번이라도 포함되면 시스템이 붕괴됩니다) ❌]
-            - "세특", "교과세특", "생기부", "학교생활기록부", "기록", "이 학생은", "학생은", "본 학생은", "체득함", "이해함", "깨달음", "느낌"
-
-            [🔥 5대 절대 엄수 규칙 🔥]
-            1. 분량 및 문장 수 강제 (초과 절대 금지): 반드시 전체 내용을 **3~4문장** 이내로 압축하세요. 전체 글자 수는 **{min_c}자 이상, {safe_max_c}자 이하**로 끝내야 하며, {safe_max_c}자를 넘기는 순간 즉시 문장을 종료하세요.
-            2. 관찰 가능한 능동태 동사: 금지된 내면 상태 동사 대신, "~을 논리적으로 설명함", "~분석 결과를 도출함" 등 구체적인 능동 행동으로 서술하세요.
-            3. 자연스러운 4단 흐름: [활동 계기] ➡️ [구체적 탐구 과정] ➡️ [결과 도출] ➡️ [교사의 최종 인지/인성 평가] 순으로 이어지되, 번호나 소제목 없이 하나의 단일 문단으로 이어지게 작성하세요.
-            4. 상투적 표현 철폐: "~활동을 통해", "~뿐만 아니라", "보여줌", "탁월한", "우수한" 등 AI 특유의 식상한 전환어와 주관적 찬양을 완벽히 배제하세요.
-            5. 완벽한 음슴체 및 기호 금지: 모든 수식은 한글로 풀고, 모든 문장 끝은 명사형 종결어미(~함, ~임, ~됨 등)로 끝내세요. 앞뒤 태그 금지.
+            [🔥 대전제: AI 냄새 완벽 제거 & 능동적 관찰 무결성 🔥]
+            1. 분량 및 팩트 보존 (매우 중요): 주어진 팩트와 보고서 내용을 절대 단순 요약하거나 생략하지 마세요. 가능한 한 모든 구체적인 디테일(도구, 개념, 방법)을 살려서, 한글 글자 수를 무조건 **최소 {min_c}자 이상, {safe_max_c}자 이하**가 되도록 풍성하게 꽉 채워 작성하세요. 글이 짧으면 실패입니다.
+            2. 관찰 가능한 능동태 동사 강제: 교사가 확인할 수 없는 학생 내면("이해함", "체득함", "깨달음") 금지. 반드시 관찰 가능한 능동 행동("~을 수학적으로 증명함", "~을 논리적으로 설명함", "~결과를 도출함")으로 서술하세요.
+            3. 자연스러운 4단 흐름: [계기] ➡️ [탐구 과정] ➡️ [결과] ➡️ [교사 평가] 순으로 이어지되, 인과관계로 매끄럽게 연결되는 하나의 단일 문단으로 작성하세요.
+            4. 상투적 표현 철폐: "~활동을 통해", "~뿐만 아니라", "탁월한 역량을 보여줌" 등 AI 특유의 식상한 전환어와 감정적 찬양을 완벽히 배제하세요. 오직 건조한 팩트와 객관적 평가만 남기세요.
+            5. 완벽한 음슴체: 모든 수식은 한글로 풀고, 문장 끝은 명사형 종결어미(~함, ~임, ~됨 등)로 끝내세요. 앞뒤 태그(제목 등) 절대 금지.
             """
             response = model.generate_content(prompt)
             st.session_state.current_result = response.text.strip().replace('\n', ' ')
 
 # ==========================================
-# 6. 결과 출력
+# 6. 결과 출력 및 멸균 작업
 # ==========================================
 if st.session_state.current_result:
     res_text = st.session_state.current_result
     
-    # 파이썬 레벨 찌꺼기 태그 철저히 제거
+    # 💡 V27 핵심 2: 파이썬 레벨의 물리적 멸균 작업 (금지어 및 태그 강제 삭제)
     tags_to_remove = [f"[{subject}]", f"{subject}", "세특 우수 사례:", "가상 세특:", "최종 세특:", "1. ", "동기:", "탐구 과정:"]
     for tag in tags_to_remove:
         if res_text.startswith(tag):
             res_text = res_text[len(tag):].strip()
 
-    # 💡 V26 핵심 3: 파이썬 단에서 혹시라도 등장한 금지어 필터링 알림
-    forbidden_words = ["세특", "교과세특", "생기부", "학교생활기록부", "이해함", "체득함", "학생은"]
-    detected_forbidden = [fw for fw in forbidden_words if fw in res_text]
-    
-    st.divider()
-    if detected_forbidden:
-        st.warning(f"⚠️ 시스템에서 다음 금지어가 감지되었습니다: {', '.join(detected_forbidden)}. 출력 결과를 확인하시고 해당 부분을 살짝 수정해 주세요.")
+    # AI가 지시를 무시하고 쓴 "학생", "세특" 관련 단어들을 파이썬이 강제로 지워버립니다.
+    forbidden_replacements = {
+        "이 학생은 ": "",
+        "본 학생은 ": "",
+        "학생은 ": "",
+        "자신은 ": "",
+        "교과세특": "기록",
+        "세특": "기록",
+        "생기부": "기록",
+        "학교생활기록부": "기록",
+        "체득함": "적용함",
+        "이해함": "설명함",
+        "깨달음": "분석함"
+    }
+    for bad_word, good_word in forbidden_replacements.items():
+        res_text = res_text.replace(bad_word, good_word)
 
-    st.subheader("🎯 생성된 맞춤형 세특 (강제 컷오프 & 금지어 차단 완료)")
+    st.session_state.current_result = res_text # 상태 업데이트
+
+    st.divider()
+    st.subheader("🎯 생성된 맞춤형 세특 (대전제 무결성 & 멸균 완료)")
     
     byte_len = get_byte_length(res_text)
     max_target = st.session_state.target_bytes
     min_target = int(max_target * 0.8)
     
     if byte_len > max_target: 
-        st.error(f"⚠️ 분량 초과: {byte_len} / 최대 {max_target} Bytes (목표 분량을 넘었습니다. 끝부분을 직접 다듬어주세요.)")
+        st.error(f"⚠️ 분량 초과: {byte_len} / 최대 {max_target} Bytes (내용이 너무 풍부합니다. 불필요한 문장을 쳐내주세요.)")
     elif byte_len < min_target:
-        st.warning(f"⚠️ 분량 미달: {byte_len} Bytes (목표 최소치 {min_target} Bytes 미달). 팩트가 더 필요합니다.")
+        st.warning(f"⚠️ 분량 미달: {byte_len} Bytes (목표 최소치 {min_target} Bytes). 팩트를 전부 활용했지만 목표치에 닿지 못했습니다. 관찰 팩트를 더 구체적으로 적어주세요.")
     else: 
         st.success(f"✅ 완벽 분량 달성: {byte_len} Bytes (목표 타겟: {min_target} ~ {max_target} Bytes 안착)")
     
