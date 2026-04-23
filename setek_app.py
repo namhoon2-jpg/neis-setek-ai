@@ -141,21 +141,20 @@ with st.sidebar:
     subject = st.text_input("과목명", placeholder="예: 미적분")
     grade_level = st.text_input("성취도/등급", placeholder="예: A")
 
-# 💡 V22 핵심 1: 평가 입력창 2단 분리
 st.subheader("👨‍🏫 교사 관찰 및 평가 (키워드 위주 작성)")
 col1, col2 = st.columns(2)
 
 with col1:
     report_eval = st.text_area(
-        "📄 보고서 관련 평가 (탐구 역량)", 
-        placeholder="보고서의 완성도, 논리적 추론력, 자료 해석 능력 등 탐구 과정에서 보인 구체적인 하드 스킬을 적어주세요.\n(예: 공식 유도 과정이 치밀함, 데이터 시각화 능력이 뛰어남)", 
+        "📄 활동/탐구 역량 팩트", 
+        placeholder="어떤 계기로 무엇을 탐구했고 어떤 결과를 냈는지 학생의 구체적인 '행동과 팩트'를 적어주세요.", 
         height=180
     )
 
 with col2:
     general_eval = st.text_area(
-        "🧑‍🏫 그 외 종합 평가 (인성/태도)", 
-        placeholder="수업 태도, 지적 호기심, 끈기, 리더십 등 소프트 스킬이나 최종 세특 마지막 줄에 들어갈 종합 평가를 적어주세요.\n(예: 포기하지 않고 질문하는 태도, 모둠원을 이끄는 리더십)", 
+        "🧑‍🏫 교사의 최종 평가 (인성/태도)", 
+        placeholder="이 활동을 지켜본 교사로서 학생의 인성, 태도, 성장 가능성에 대한 평가를 적어주세요.", 
         height=180
     )
 
@@ -168,7 +167,6 @@ if st.session_state.authenticated and not st.session_state.db_texts and GSHEET_C
 # 5. 생성 엔진
 # ==========================================
 if st.button("🚀 세특 초안 생성하기", type="primary", use_container_width=True):
-    # 두 평가 칸 중 하나라도 비어있으면 작성 가능하도록 유연성 부여
     if not subject or (not report_eval and not general_eval):
         st.warning("👈 과목명과 최소 하나 이상의 평가(보고서 관련 또는 종합 평가)를 입력해주세요.")
     else:
@@ -205,10 +203,10 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             
             bp_prompt = f"""
             당신은 최고의 고등학교 {subject} 교사입니다.
-            [입체적 서사 구조] 반드시 (계기 -> 과정 -> 결과 -> 교사 평가)의 순서를 엄수하되, 문장 간의 원인과 결과가 매끄럽게 이어지는 논리적 문맥을 형성하세요.
-            [주어 및 금지어] 주어를 쓰지 말고, 본문에 '세특', '생기부' 같은 단어도 절대 쓰지 마세요.
+            [관찰 가능한 행동 동사] 교사가 직접 볼 수 없는 내면 상태('이해함', '체득함', '깨달음')는 절대 금지하고, 반드시 눈으로 확인 가능한 능동적 행동('증명함', '설명함', '적용함')으로 우회하여 작성하세요.
+            [자연스러운 서사] 동기-과정-결과-평가가 기계적인 나열이 아닌, "A라는 호기심(동기)으로 B를 분석했고(과정), 그 결과 C를 도출함(결과). 이를 통해 D라는 역량을 확인함(평가)" 처럼 인과관계로 매끄럽게 이어지게 설계하세요.
             [공통 가이드라인] {guidelines}
-            위 규칙을 지켜 '{subject}' 과목의 세특 뼈대를 가상으로 작성하세요.
+            위 대전제를 지켜 '{subject}' 과목의 세특 뼈대를 가상으로 작성하세요.
             """
             best_practice_template = model.generate_content(bp_prompt).text.strip()
             st.session_state.current_template = best_practice_template
@@ -216,15 +214,8 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
         with st.spinner("4/4: 데이터 분할 융합 및 최종 세특 작성 중..."):
             max_b = st.session_state.target_bytes
             min_b = int(max_b * 0.8)
-            max_c = (max_b // 3) - 15  
+            max_c = (max_b // 3) - 10  
             min_c = (min_b // 3)
-            
-            # 💡 V22 핵심 2: 두 평가 데이터의 명확한 프롬프트 매핑
-            role_instruction = """
-            [🔥 데이터 역할 분담 및 융합 규칙 🔥]
-            1. [탐구 계기-과정-결과]: <학생 보고서>와 <보고서 관련 평가(탐구 역량)>를 융합하여 서술하세요. 보고서의 단순 요약이 아니라, 교사가 관찰한 탐구의 깊이와 논리력을 반영하여 구체적이고 능동적인 동사(적용함, 도출함 등)로 묘사하세요.
-            2. [인지/인성 종합 및 최종 평가]: <그 외 종합 평가(인성/태도)>에 작성된 내용은 탐구 과정 서술 전반에 끈기, 태도 등의 부사로 자연스럽게 녹여내고, 이 내용들을 집약하여 마지막 [교사 평가] 문장의 핵심 결론으로 강력하게 작성하세요.
-            """
             
             prompt = f"""
             아래 [데이터]만을 활용하여 학생의 실제 NEIS 교과세특을 작성하세요.
@@ -232,25 +223,22 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             [데이터]
             - 과목명: {subject}
             - 성취도: {grade_level}
-            - 보고서 관련 평가 (탐구 역량): {report_eval}
-            - 그 외 종합 평가 (인성/태도): {general_eval}
+            - 활동/탐구 역량 팩트: {report_eval}
+            - 교사의 최종 평가 (인성/태도): {general_eval}
             - 학생 보고서 텍스트: {student_report_text[:2000]}
             - 융합 트렌드: {trend}
 
             [절대 모방 템플릿] 
             {best_practice_template}
 
-            {role_instruction}
-
-            [🔥 8대 절대 엄수 규칙 🔥]
-            1. NEIS 호환 (수식/기호 금지): 모든 특수기호, 첨자, LaTeX 수식을 한글 개념어로 자연스럽게 풀어서 설명하세요.
-            2. 분량 폭주 절대 금지: 나이스 제한치({max_b}바이트)를 고려하여 한글 기준 절대 {max_c}자를 넘지 않도록 문장을 압축하세요. (목표: {min_c}자 ~ {max_c}자).
-            3. 하나의 통글(단일 문단): 번호, 소제목, 줄바꿈, 마크다운 기호를 모두 없애고 완벽한 하나의 문단으로 묶으세요.
-            4. 주어 완벽 생략: '학생은', '본 학생은', 실명 등 불필요한 주어를 원천 차단하세요.
-            5. 유기적 4단 서사 구조: [활동 계기] ➡️ [구체적 탐구 과정] ➡️ [결과 도출] ➡️ [교사 평가]의 순서가 원인과 결과로 매끄럽게 연결되게 하세요.
-            6. 능동적/관찰 가능한 동사: '이해함', '깨달음' 배제. 오직 관찰 가능한 능동적 행동 동사만 사용하세요.
-            7. 메타 단어 절대 금지: '세특', '교과세특', '학교생활기록부' 등의 단어 작성 절대 불가.
-            8. 완벽한 음슴체 강제: 모든 문장 끝은 명사형 종결어미(~함, ~임, ~됨 등)로 끝나야 합니다. 결과물 앞뒤에 과목명이나 태그를 달지 마세요.
+            [🔥 대전제: AI 냄새 완벽 제거 & 능동적 관찰 무결성 🔥]
+            1. 관찰 가능한 능동태 동사 강제 (매우 중요): 교사가 직접 확인할 수 없는 학생의 내면 상태("이해함", "체득함", "깨달음", "느낌")를 묘사하는 동사를 절대 사용하지 마세요. 대신 학생의 역량을 증명할 수 있는 구체적인 능동적 행동("~을 수학적으로 증명함", "~을 논리적으로 설명함", "~원리를 적용하여 모델링함", "~분석 결과를 도출함")으로 우회하여 서술하세요.
+            2. 분량 절대 강제 (생존 규칙): 한글 글자 수를 무조건 **최소 {min_c}자 이상, 최대 {max_c}자 이하**로 꽉 채워 작성하세요. 미달 시 절대 안 됩니다.
+            3. 상투적 표현 철폐: "~활동을 통해", "~과정에서", "~뿐만 아니라", "보여줌", "탁월한", "우수한" 등 식상한 전환어와 주관적 찬양을 완벽히 배제하세요. 오직 건조한 팩트로만 구성하세요.
+            4. 자연스러운 4단 흐름: [활동 계기] ➡️ [구체적 탐구 과정] ➡️ [결과 도출] ➡️ [교사의 최종 평가] 순으로 이어지되, 번호나 소제목 없이 하나의 덩어리(단일 문단) 안에서 물 흐르듯 인과관계로 연결되게 작성하세요.
+            5. 수식 한글화: NEIS 오류 방지를 위해 기호, 첨자, 수식을 한글 개념어(예: 삼각함수, 첫 번째 길이 등)로 풀어 쓰세요.
+            6. 주어/메타 단어 금지: '학생은', '실명', '세특', '생기부' 등의 단어를 원천 차단하세요.
+            7. 완벽한 음슴체: 모든 문장 끝은 명사형 종결어미(~함, ~임, ~됨 등)로 끝내고, 결과물 앞뒤에 과목명이나 태그를 달지 마세요.
             """
             response = model.generate_content(prompt)
             st.session_state.current_result = response.text.strip().replace('\n', ' ')
@@ -267,40 +255,4 @@ if st.session_state.current_result:
             res_text = res_text[len(tag):].strip()
 
     st.divider()
-    st.subheader("🎯 생성된 맞춤형 세특 (역량 & 인성 융합 완료)")
-    
-    byte_len = get_byte_length(res_text)
-    max_target = st.session_state.target_bytes
-    min_target = int(max_target * 0.8)
-    
-    if byte_len > max_target: 
-        st.error(f"⚠️ 분량 초과: {byte_len} / 최대 {max_target} Bytes")
-    elif byte_len < min_target:
-        st.warning(f"⚠️ 분량 미달: {byte_len} Bytes (목표 구간: {min_target} ~ {max_target} Bytes)")
-    else: 
-        st.success(f"✅ 완벽 분량 달성: {byte_len} Bytes (목표 구간: {min_target} ~ {max_target} Bytes)")
-    
-    final_text = st.text_area("결과 확인/수정", value=res_text, height=250)
-
-    with st.expander("🔍 AI가 설계한 뼈대 훔쳐보기 (참고용)"):
-        st.info(st.session_state.current_template)
-
-    # 💡 V22 핵심 3: 엑셀 저장 시 두 평가 내용을 묶어서 저장
-    combined_eval = f"[탐구 역량] {report_eval}\n[인성/태도] {general_eval}"
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        pd.DataFrame([{
-            "날짜": datetime.now().strftime('%Y-%m-%d %H:%M'), 
-            "과목": subject, 
-            "등급": grade_level, 
-            "관찰팩트(통합)": combined_eval, 
-            "생성세특": final_text
-        }]).to_excel(writer, index=False)
-        
-    st.download_button(
-        label="📂 작성된 세특 엑셀로 다운로드 (개인 PC 보관)",
-        data=output.getvalue(),
-        file_name=f"{subject}_세특기록_{datetime.now().strftime('%m%d_%H%M')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True
-    )
+    st.subheader("🎯 생성된 맞춤형 세특 (능
