@@ -111,8 +111,11 @@ with st.sidebar:
     st.divider()
     subject = st.text_input("과목명", placeholder="예: 미적분")
     grade_level = st.text_input("성취도/등급", placeholder="예: A")
-    teacher_eval = st.text_area("교사 관찰 팩트 (키워드)", height=100)
-    pdf_file = st.file_uploader("학생 보고서 (PDF) - 선택", type=["pdf"])
+    
+    # 💡 V17 핵심 1: 관찰 팩트 입력창 높이 대폭 확장 (100 -> 250)
+    teacher_eval = st.text_area("교사 관찰 팩트 (상세 입력 권장)", placeholder="학생의 활동 계기, 구체적인 활동 과정, 결과, 그리고 교사로서 엿본 역량을 자세히 적어주세요.", height=250)
+    
+    pdf_file = st.file_uploader("학생 보고서 (PDF) - 선택", type=["pdf"], accept_multiple_files=True)
 
 if st.session_state.authenticated and not st.session_state.db_texts and GSHEET_CSV_URL:
     sync_with_gsheet()
@@ -127,8 +130,10 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
         with st.spinner("1/4: 학생 데이터를 분석 중입니다..."):
             student_report_text = "제출된 추가 보고서 없음"
             if pdf_file:
-                with pdfplumber.open(pdf_file) as pdf:
-                    student_report_text = "".join([pg.extract_text() for pg in pdf.pages if pg.extract_text()])
+                student_report_text = ""
+                for file in pdf_file:
+                    with pdfplumber.open(file) as pdf:
+                        student_report_text += "".join([pg.extract_text() for pg in pdf.pages if pg.extract_text()]) + "\n"
             
         with st.spinner("2/4: 최신 동향 검색 중..."):
             kw_p = f"다음 내용에서 핵심 트렌드 검색어 1개만 출력: {teacher_eval} {student_report_text[:500]}"
@@ -141,9 +146,11 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
         with st.spinner("3/4: 입체적 단일 문단 뼈대 설계 중..."):
             guidelines = "\n".join(st.session_state.db_texts) if st.session_state.db_texts else "객관적이고 건조한 문체."
             
+            # 💡 V17 핵심 2: 뼈대 설계 시 논리적 인과관계 및 구체성 강제
             bp_prompt = f"""
             당신은 최고의 고등학교 {subject} 교사입니다.
-            [입체적 서사 구조] (계기 -> 과정 -> 결과 -> 교사 평가)의 순서로 자연스럽게 이어지도록 하되, 절대 번호나 소제목을 달지 마세요.
+            [입체적 서사 구조] 반드시 (계기 -> 과정 -> 결과 -> 교사 평가)의 순서를 엄수하되, 문장 간의 원인과 결과가 매끄럽게 이어지는 논리적 문맥을 형성하세요. 단순 문장 나열이나 번호 매기기는 절대 금지합니다.
+            [구체성과 능동태] 학생이 사용한 개념과 도구를 명확히 묘사하고, 피동/수동태(~되어짐)를 피하고 주도적인 능동태(~함)로 작성하세요.
             [주어 완벽 생략] '학생은' 등 주어를 쓰지 마세요.
             [공통 가이드라인] {guidelines}
             위 규칙을 지켜 '{subject}' 과목의 세특 뼈대를 가상으로 작성하세요.
@@ -152,7 +159,6 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             st.session_state.current_template = best_practice_template
 
         with st.spinner("4/4: 최종 세특 작성 중..."):
-            # 💡 V16 핵심: 철저한 글자수 제한 수식화 (안전 버퍼 -15자 적용)
             max_b = st.session_state.target_bytes
             min_b = int(max_b * 0.8)
             max_c = (max_b // 3) - 15  
@@ -171,14 +177,15 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             [절대 모방 템플릿] 
             {best_practice_template}
 
-            [🔥 7대 절대 엄수 규칙 🔥]
-            1. NEIS 호환 (수식/기호 금지): 나이스 시스템은 첨자(L1), 특수기호, LaTeX 수식을 지원하지 않습니다. 모든 수식이나 기호는 한글로 풀어서 설명하세요. (예: v_x -> x축 방향 속도, L1 -> 첫 번째 길이)
-            2. 분량 폭주 절대 금지 (가장 중요): 내용이 아무리 많아도 나이스 시스템의 {max_b}바이트 한계를 초과하면 안 됩니다. 한글 기준 절대 {max_c}자를 넘지 않도록 문장을 극도로 압축하고 쳐내세요. (목표: {min_c}자 ~ {max_c}자).
-            3. 하나의 통글(단일 문단): 번호(1, 2, 3...), 소제목, 줄바꿈, 마크다운(**) 기호를 절대 사용하지 말고, 하나의 문단으로만 출력하세요.
-            4. 주어 완벽 생략: 학생 실명, '학생은', '본 학생은' 등 주어를 일절 금지합니다.
-            5. 입체적 서사 구조: 번호나 제목 없이 내용상으로만 [계기] ➡️ [탐구 과정] ➡️ [결과] ➡️ [교사 평가]가 전개되도록 하세요.
-            6. 완벽한 음슴체 강제: 모든 문장의 끝은 반드시 명사형 종결어미(~함, ~임, ~됨 등)로 끝나야 합니다. 
-            7. 태그 및 군더더기 금지: 결과물 앞뒤에 과목명이나 어떠한 인사말도 달지 마세요.
+            [🔥 8대 절대 엄수 규칙 🔥]
+            1. NEIS 호환 (수식/기호 금지): 나이스 시스템 오류 방지를 위해 모든 특수기호, 첨자, LaTeX 수식을 한글로 풀어서 설명하세요.
+            2. 분량 폭주 절대 금지: 나이스 제한치({max_b}바이트)를 고려하여 한글 기준 절대 {max_c}자를 넘지 않도록 문장을 극도로 압축하고 쳐내세요. (목표: {min_c}자 ~ {max_c}자).
+            3. 하나의 통글(단일 문단): 번호(1, 2, 3...), 소제목, 줄바꿈, 마크다운 기호를 모두 없애고 완벽한 하나의 문단으로 묶으세요.
+            4. 주어 완벽 생략: '학생은', '본 학생은', '자신은' 등 불필요한 주어를 원천 차단하고 팩트 위주로 문장을 시작하세요.
+            5. 유기적 4단 서사 구조 (핵심): 단순한 사실 나열을 피하십시오. [활동 동기] ➡️ [구체적 탐구 과정] ➡️ [결과 도출] ➡️ [교사 평가]의 순서가 반드시 지켜져야 하며, 각 단계가 톱니바퀴처럼 원인과 결과로 자연스럽게 연결되는 문맥을 구성하세요.
+            6. 능동적이고 구체적인 서술 (핵심): 제공된 팩트 내에서 학생이 사용한 이론, 도구, 방법론을 두루뭉술하게 넘기지 말고 구체적으로 강조하세요. 모든 서술 동사는 수동태/피동형("~되어짐", "~보여짐")을 절대 금지하고, 능동태("~함", "~분석함", "~적용함")로 작성하여 학생의 주도성을 부각시키세요.
+            7. 완벽한 음슴체 강제: 모든 문장 끝은 명사형 종결어미(~함, ~임, ~됨 등)로 끝나야 합니다. 
+            8. 태그 및 군더더기 금지: 결과물 앞뒤에 과목명, 제목, 인사말 등을 달지 마세요.
             """
             response = model.generate_content(prompt)
             st.session_state.current_result = response.text.strip().replace('\n', ' ')
@@ -195,7 +202,7 @@ if st.session_state.current_result:
             res_text = res_text[len(tag):].strip()
 
     st.divider()
-    st.subheader("🎯 생성된 맞춤형 세특 (NEIS 호환 & 글자수 제한)")
+    st.subheader("🎯 생성된 맞춤형 세특 (능동적 문맥 & 구체성 강화)")
     
     byte_len = get_byte_length(res_text)
     max_target = st.session_state.target_bytes
