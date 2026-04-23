@@ -95,7 +95,7 @@ def sync_with_gsheet():
 # ==========================================
 # 4. 화면 구성 및 사이드바
 # ==========================================
-st.title("📝 NEIS 세특 AI 어시스턴트 (V34: 문장 단위 절삭판)")
+st.title("📝 NEIS 세특 AI 어시스턴트 (V35: 서사 구조 최적화)")
 
 with st.sidebar:
     st.header("📝 기본 정보")
@@ -198,9 +198,12 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
         with st.spinner("3/4: 입체적 뼈대 설계 중..."):
             guidelines = "\n".join(st.session_state.db_texts) if st.session_state.db_texts else "객관적이고 건조한 문체."
             
+            # 💡 수정 포인트 1: 뼈대 설계에서부터 순서와 문맥 강제
             bp_prompt = f"""
             당신은 최고의 고등학교 {subject} 교사입니다.
             [관찰 가능한 행동 동사] 내면 상태('이해함', '체득함') 절대 금지. 능동적 행동('증명함', '분석함')으로 우회하세요.
+            [동기-과정-결과-평가 순서 엄수] 반드시 1.활동 동기 -> 2.탐구 과정 -> 3.결과 도출 -> 4.교사 평가의 순서로 서술하세요.
+            [자연스러운 문맥 흐름] 문장들이 뚝뚝 끊기지 않고 원인과 결과로 자연스럽게 이어지도록 설계하세요.
             [공통 가이드라인] {guidelines}
             위 규칙을 지켜 '{subject}' 과목의 세특 뼈대를 단일 문단으로 가상으로 작성하세요.
             """
@@ -213,6 +216,7 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             safe_max_c = int((max_b / 3) * 0.95) 
             min_c = int(min_b / 3)
             
+            # 💡 수정 포인트 2: 최종 작성 프롬프트에 2가지 요구사항 명확히 반영
             prompt = f"""
             아래 [데이터]만을 활용하여 학생의 실제 NEIS 교과세특을 작성하세요.
 
@@ -223,13 +227,15 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             - 교사의 인지적/인성 평가: {general_eval if general_eval.strip() else "(미기재)"}
             - 학생 다중 보고서 텍스트: {student_report_text[:2000]}
 
-            [🔥 V34 최우선 엄수 규칙: 문법 교정 및 멸균 🔥]
-            1. 간결한 호흡: 한 문장이 너무 길어지지 않도록, 팩트 단위로 문장을 적절히 끊어서 서술하세요.
-            2. 자연스러운 시작: 절대 '과목에서' 같은 말로 시작하지 마세요.
-            3. 수식 절대 작성 금지 (추상화 요약): 수식이나 공식을 한글 발음으로 절대 적지 마세요. "수학적 원리를 도출함"과 같이 '원리와 목적'만 우회하여 압축하세요.
-            4. 분량 및 팩트 보존: 글자 수를 무조건 **최소 {min_c}자 이상, {safe_max_c}자 이하**로 꽉 채우세요.
-            5. 마크다운/기호/실명/제목 완벽 금지.
-            6. 능동태 및 완벽한 음슴체 (매우 중요): 절대 '~습니다', '~어요'를 쓰지 마세요. 문장 끝은 반드시 명사형 종결어미(~함, ~임, ~됨 등)로 끝내야 합니다. (예: 탐구하였습니다 -> 탐구함 / 보였습니다 -> 보임)
+            [🔥 V35 최우선 엄수 규칙: 서사 구조 및 문맥 흐름 🔥]
+            1. 동기-과정-결과-평가 순서 엄수: 글의 구조는 반드시 [활동 동기] ➡️ [구체적 탐구 과정] ➡️ [도출된 결과] ➡️ [교사의 인지적/인성 평가] 순서로 전개해야 합니다. 역순이 되거나 순서가 뒤섞이면 안 됩니다.
+            2. 자연스러운 문맥 흐름: 각 단계가 기계적으로 나열되지 않도록 하세요. 앞 문장의 탐구 내용이 뒷 문장 분석의 원인이 되는 등, 내용상 매끄럽고 자연스러운 문맥 흐름을 완성하세요.
+            3. 간결한 호흡: 한 문장이 너무 길어지지 않도록, 팩트 단위로 문장을 적절히 끊어서 서술하세요.
+            4. 자연스러운 시작: 절대 '과목에서' 같은 말로 시작하지 마세요. 호기심이나 동기로 자연스럽게 직행하세요.
+            5. 수식 절대 작성 금지 (추상화 요약): 수식이나 공식을 한글 발음으로 절대 적지 마세요. "수학적 원리를 도출함"과 같이 '원리와 목적'만 우회하여 압축하세요.
+            6. 분량 및 팩트 보존: 글자 수를 무조건 **최소 {min_c}자 이상, {safe_max_c}자 이하**로 꽉 채우세요.
+            7. 마크다운/기호/실명/제목 완벽 금지.
+            8. 능동태 및 완벽한 음슴체: 절대 '~습니다', '~어요'를 쓰지 마세요. 문장 끝은 반드시 명사형 종결어미(~함, ~임, ~됨 등)로 끝내야 합니다.
             """
             response = model.generate_content(prompt)
             st.session_state.current_result = response.text.strip()
@@ -254,8 +260,7 @@ if st.session_state.current_result:
             if res_text.startswith(prefix):
                 res_text = res_text[len(prefix):].strip()
 
-    # 💡 3. 존댓말 및 기괴한 어미 강제 교정 (정규식 및 치환)
-    # AI가 '습니다'를 썼을 경우 무조건 음슴체로 변경
+    # 3. 존댓말 및 기괴한 어미 강제 교정 (정규식 및 치환)
     res_text = re.sub(r'([가-힣]+)하였습니다\.', r'\1함.', res_text)
     res_text = re.sub(r'([가-힣]+)했습니다\.', r'\1함.', res_text)
     res_text = re.sub(r'([가-힣]+)보였습니다\.', r'\1보임.', res_text)
@@ -276,21 +281,18 @@ if st.session_state.current_result:
     for bad_word, good_word in forbidden_replacements.items():
         res_text = res_text.replace(bad_word, good_word)
 
-    # 💡 4. 진정한 문장 단위 스마트 컷오프 (바이트 초과 방지)
+    # 4. 진정한 문장 단위 스마트 컷오프 (바이트 초과 방지)
     max_target = st.session_state.target_bytes
     if get_byte_length(res_text) > max_target:
-        # 마침표(.)를 기준으로 문장 분리
         sentences = [s.strip() + "." for s in res_text.split('.') if s.strip()]
         new_text = ""
         for sentence in sentences:
-            # 새로운 문장을 더했을 때 타겟 바이트를 초과하면 중단 (그 문장은 버림)
             candidate = new_text + (" " if new_text else "") + sentence
             if get_byte_length(candidate) <= max_target:
                 new_text = candidate
             else:
                 break
         
-        # 만약 첫 문장조차 너무 길어서 new_text가 비어있다면, 어쩔 수 없이 예전처럼 자름
         if not new_text:
             new_text = sentences[0]
             while get_byte_length(new_text) > (max_target - 5):
@@ -302,7 +304,7 @@ if st.session_state.current_result:
     st.session_state.current_result = res_text
 
     st.divider()
-    st.subheader("🎯 생성된 맞춤형 세특 (문장 단위 절삭 및 존댓말 교정 완료)")
+    st.subheader("🎯 생성된 맞춤형 세특 (서사 구조 및 문맥 최적화 적용)")
     
     byte_len = get_byte_length(res_text)
     min_target = int(max_target * 0.8)
