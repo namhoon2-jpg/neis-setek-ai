@@ -15,7 +15,7 @@ except ImportError:
     ddgs_available = False
 
 # ==========================================
-# 0. 안전한 Secrets 호출 함수 (에러 원천 차단)
+# 0. 안전한 Secrets 호출 함수 
 # ==========================================
 def get_secret(key, default=""):
     try:
@@ -111,10 +111,7 @@ with st.sidebar:
                         new_texts = df.iloc[:, 0].dropna().astype(str).tolist()
                 elif db_file.name.endswith('.pdf'):
                     with pdfplumber.open(db_file) as pdf:
-                        extracted = []
-                        for pg in pdf.pages:
-                            text = pg.extract_text()
-                            if text: extracted.append(text)
+                        extracted = [pg.extract_text() for pg in pdf.pages if pg.extract_text()]
                         full_pdf_text = "".join(extracted)
                         if full_pdf_text.strip():
                             new_texts = [full_pdf_text]
@@ -124,8 +121,6 @@ with st.sidebar:
                     if response.status_code == 200:
                         st.success(f"✅ {len(new_texts)}건 지식 저장 완료!")
                         sync_with_gsheet()
-                    else:
-                        st.error("서버 전송에 실패했습니다.")
                 else:
                     st.warning("추출할 텍스트가 없거나 URL 설정이 누락되었습니다.")
             except Exception as e:
@@ -145,10 +140,26 @@ with st.sidebar:
     st.divider()
     subject = st.text_input("과목명", placeholder="예: 미적분")
     grade_level = st.text_input("성취도/등급", placeholder="예: A")
-    
-    teacher_eval = st.text_area("교사 관찰 팩트 (상세 입력 권장)", placeholder="학생의 활동 계기, 구체적인 활동 과정, 결과, 그리고 교사로서 엿본 역량을 자세히 적어주세요.", height=250)
-    
-    pdf_files = st.file_uploader("학생 보고서 (PDF) - 선택", type=["pdf"], accept_multiple_files=True)
+
+# 💡 V22 핵심 1: 평가 입력창 2단 분리
+st.subheader("👨‍🏫 교사 관찰 및 평가 (키워드 위주 작성)")
+col1, col2 = st.columns(2)
+
+with col1:
+    report_eval = st.text_area(
+        "📄 보고서 관련 평가 (탐구 역량)", 
+        placeholder="보고서의 완성도, 논리적 추론력, 자료 해석 능력 등 탐구 과정에서 보인 구체적인 하드 스킬을 적어주세요.\n(예: 공식 유도 과정이 치밀함, 데이터 시각화 능력이 뛰어남)", 
+        height=180
+    )
+
+with col2:
+    general_eval = st.text_area(
+        "🧑‍🏫 그 외 종합 평가 (인성/태도)", 
+        placeholder="수업 태도, 지적 호기심, 끈기, 리더십 등 소프트 스킬이나 최종 세특 마지막 줄에 들어갈 종합 평가를 적어주세요.\n(예: 포기하지 않고 질문하는 태도, 모둠원을 이끄는 리더십)", 
+        height=180
+    )
+
+pdf_files = st.file_uploader("학생 보고서 (PDF) - 선택", type=["pdf"], accept_multiple_files=True)
 
 if st.session_state.authenticated and not st.session_state.db_texts and GSHEET_CSV_URL:
     sync_with_gsheet()
@@ -157,8 +168,9 @@ if st.session_state.authenticated and not st.session_state.db_texts and GSHEET_C
 # 5. 생성 엔진
 # ==========================================
 if st.button("🚀 세특 초안 생성하기", type="primary", use_container_width=True):
-    if not subject or not teacher_eval:
-        st.warning("👈 과목명과 관찰 팩트를 입력해주세요.")
+    # 두 평가 칸 중 하나라도 비어있으면 작성 가능하도록 유연성 부여
+    if not subject or (not report_eval and not general_eval):
+        st.warning("👈 과목명과 최소 하나 이상의 평가(보고서 관련 또는 종합 평가)를 입력해주세요.")
     else:
         with st.spinner("1/4: 학생 데이터를 분석 중입니다..."):
             student_report_text = ""
@@ -168,35 +180,32 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
                         with pdfplumber.open(file) as pdf:
                             for pg in pdf.pages:
                                 text = pg.extract_text()
-                                if text: 
-                                    student_report_text += text + "\n"
+                                if text: student_report_text += text + "\n"
                     except Exception as e:
-                        st.warning(f"{file.name} 추출 중 오류 발생: {e}")
+                        st.warning(f"{file.name} 추출 오류: {e}")
             
-            if not student_report_text.strip():
+            has_report = bool(student_report_text.strip())
+            if not has_report:
                 student_report_text = "제출된 추가 보고서 없음"
             
-        with st.spinner("2/4: 최신 동향 검색 중... (오류 시 자동 생략)"):
-            trend = "검색 생략 (통신 지연)"
-            if ddgs_available:
+        with st.spinner("2/4: 최신 동향 검색 중..."):
+            trend = "검색 생략"
+            if ddgs_available and has_report:
                 try:
-                    kw_p = f"다음 내용에서 핵심 트렌드 검색어 1개만 출력: {teacher_eval} {student_report_text[:500]}"
+                    kw_p = f"다음 내용에서 핵심 검색어 1개만 출력: {report_eval} {student_report_text[:500]}"
                     kw_resp = model.generate_content(kw_p)
                     if kw_resp.parts:
                         kw = kw_resp.text.strip()
-                        results = list(DDGS().text(f"{kw} 최신 연구 동향", max_results=1))
-                        if results:
-                            trend = results[0].get('body', '정보 없음')
-                except Exception as e:
-                    trend = "검색 생략 (보안/네트워크 차단)"
+                        results = list(DDGS().text(f"{kw} 최신 동향", max_results=1))
+                        if results: trend = results[0].get('body', '정보 없음')
+                except Exception: pass
 
         with st.spinner("3/4: 입체적 단일 문단 뼈대 설계 중..."):
             guidelines = "\n".join(st.session_state.db_texts) if st.session_state.db_texts else "객관적이고 건조한 문체."
             
             bp_prompt = f"""
             당신은 최고의 고등학교 {subject} 교사입니다.
-            [입체적 서사 구조] 반드시 (계기 -> 과정 -> 결과 -> 교사 평가)의 순서를 엄수하되, 문장 간의 원인과 결과가 매끄럽게 이어지는 논리적 문맥을 형성하세요. 단순 문장 나열이나 번호 매기기는 절대 금지합니다.
-            [관찰 가능한 행동 동사] '이해함', '깨달음', '느낌' 금지. 오직 '설명함', '적용함', '분석함' 등 관찰 가능한 행동 동사만 사용하세요.
+            [입체적 서사 구조] 반드시 (계기 -> 과정 -> 결과 -> 교사 평가)의 순서를 엄수하되, 문장 간의 원인과 결과가 매끄럽게 이어지는 논리적 문맥을 형성하세요.
             [주어 및 금지어] 주어를 쓰지 말고, 본문에 '세특', '생기부' 같은 단어도 절대 쓰지 마세요.
             [공통 가이드라인] {guidelines}
             위 규칙을 지켜 '{subject}' 과목의 세특 뼈대를 가상으로 작성하세요.
@@ -204,11 +213,18 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             best_practice_template = model.generate_content(bp_prompt).text.strip()
             st.session_state.current_template = best_practice_template
 
-        with st.spinner("4/4: 최종 세특 작성 중..."):
+        with st.spinner("4/4: 데이터 분할 융합 및 최종 세특 작성 중..."):
             max_b = st.session_state.target_bytes
             min_b = int(max_b * 0.8)
             max_c = (max_b // 3) - 15  
             min_c = (min_b // 3)
+            
+            # 💡 V22 핵심 2: 두 평가 데이터의 명확한 프롬프트 매핑
+            role_instruction = """
+            [🔥 데이터 역할 분담 및 융합 규칙 🔥]
+            1. [탐구 계기-과정-결과]: <학생 보고서>와 <보고서 관련 평가(탐구 역량)>를 융합하여 서술하세요. 보고서의 단순 요약이 아니라, 교사가 관찰한 탐구의 깊이와 논리력을 반영하여 구체적이고 능동적인 동사(적용함, 도출함 등)로 묘사하세요.
+            2. [인지/인성 종합 및 최종 평가]: <그 외 종합 평가(인성/태도)>에 작성된 내용은 탐구 과정 서술 전반에 끈기, 태도 등의 부사로 자연스럽게 녹여내고, 이 내용들을 집약하여 마지막 [교사 평가] 문장의 핵심 결론으로 강력하게 작성하세요.
+            """
             
             prompt = f"""
             아래 [데이터]만을 활용하여 학생의 실제 NEIS 교과세특을 작성하세요.
@@ -216,23 +232,25 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             [데이터]
             - 과목명: {subject}
             - 성취도: {grade_level}
-            - 교사 관찰 팩트: {teacher_eval}
-            - 학생 보고서: {student_report_text[:2000]}
+            - 보고서 관련 평가 (탐구 역량): {report_eval}
+            - 그 외 종합 평가 (인성/태도): {general_eval}
+            - 학생 보고서 텍스트: {student_report_text[:2000]}
             - 융합 트렌드: {trend}
 
             [절대 모방 템플릿] 
             {best_practice_template}
 
-            [🔥 9대 절대 엄수 규칙 🔥]
-            1. 수식의 자연스러운 개념 서술 (NEIS 호환): LaTeX나 첨자(L_1, $\theta$)를 피하라고 해서 수식을 "코사인 괄호 열고"처럼 소리 나는 대로 유치하게 적지 마세요. 수식을 억지로 나열하지 말고, "삼각함수를 활용하여 두 링크 길이(L1, L2)와 관절 각도에 따른 끝점 좌표 계산식을 도출함"과 같이 사용한 '수학적 원리'를 자연스러운 우리말 문장으로 요약하여 서술하세요. 일반 영문자나 숫자(L1, x, y)는 그대로 써도 됩니다.
+            {role_instruction}
+
+            [🔥 8대 절대 엄수 규칙 🔥]
+            1. NEIS 호환 (수식/기호 금지): 모든 특수기호, 첨자, LaTeX 수식을 한글 개념어로 자연스럽게 풀어서 설명하세요.
             2. 분량 폭주 절대 금지: 나이스 제한치({max_b}바이트)를 고려하여 한글 기준 절대 {max_c}자를 넘지 않도록 문장을 압축하세요. (목표: {min_c}자 ~ {max_c}자).
             3. 하나의 통글(단일 문단): 번호, 소제목, 줄바꿈, 마크다운 기호를 모두 없애고 완벽한 하나의 문단으로 묶으세요.
             4. 주어 완벽 생략: '학생은', '본 학생은', 실명 등 불필요한 주어를 원천 차단하세요.
-            5. 유기적 4단 서사 구조: [활동 계기] ➡️ [구체적 탐구 과정] ➡️ [결과 도출] ➡️ [교사 평가]의 순서가 원인과 결과로 자연스럽게 연결되게 하세요.
-            6. 능동적/관찰 가능한 동사: '이해함', '깨달음' 배제. '적용함', '설명함', '분석하여 도출함' 등 능동적이고 구체적인 행동 동사만 사용하세요.
+            5. 유기적 4단 서사 구조: [활동 계기] ➡️ [구체적 탐구 과정] ➡️ [결과 도출] ➡️ [교사 평가]의 순서가 원인과 결과로 매끄럽게 연결되게 하세요.
+            6. 능동적/관찰 가능한 동사: '이해함', '깨달음' 배제. 오직 관찰 가능한 능동적 행동 동사만 사용하세요.
             7. 메타 단어 절대 금지: '세특', '교과세특', '학교생활기록부' 등의 단어 작성 절대 불가.
-            8. 완벽한 음슴체 강제: 모든 문장 끝은 명사형 종결어미(~함, ~임, ~됨 등)로 끝나야 합니다. 
-            9. 태그 및 군더더기 금지: 결과물 앞뒤에 과목명, 제목 등을 절대 달지 마세요.
+            8. 완벽한 음슴체 강제: 모든 문장 끝은 명사형 종결어미(~함, ~임, ~됨 등)로 끝나야 합니다. 결과물 앞뒤에 과목명이나 태그를 달지 마세요.
             """
             response = model.generate_content(prompt)
             st.session_state.current_result = response.text.strip().replace('\n', ' ')
@@ -249,7 +267,7 @@ if st.session_state.current_result:
             res_text = res_text[len(tag):].strip()
 
     st.divider()
-    st.subheader("🎯 생성된 맞춤형 세특 (수식 서술 최적화 완료)")
+    st.subheader("🎯 생성된 맞춤형 세특 (역량 & 인성 융합 완료)")
     
     byte_len = get_byte_length(res_text)
     max_target = st.session_state.target_bytes
@@ -267,13 +285,15 @@ if st.session_state.current_result:
     with st.expander("🔍 AI가 설계한 뼈대 훔쳐보기 (참고용)"):
         st.info(st.session_state.current_template)
 
+    # 💡 V22 핵심 3: 엑셀 저장 시 두 평가 내용을 묶어서 저장
+    combined_eval = f"[탐구 역량] {report_eval}\n[인성/태도] {general_eval}"
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         pd.DataFrame([{
             "날짜": datetime.now().strftime('%Y-%m-%d %H:%M'), 
             "과목": subject, 
             "등급": grade_level, 
-            "관찰팩트": teacher_eval, 
+            "관찰팩트(통합)": combined_eval, 
             "생성세특": final_text
         }]).to_excel(writer, index=False)
         
