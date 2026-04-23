@@ -255,4 +255,39 @@ if st.session_state.current_result:
             res_text = res_text[len(tag):].strip()
 
     st.divider()
-    st.subheader("🎯 생성된 맞춤형 세특 (능
+    st.subheader("🎯 생성된 맞춤형 세특 (능동태 및 관찰 무결성 완료)")
+    
+    byte_len = get_byte_length(res_text)
+    max_target = st.session_state.target_bytes
+    min_target = int(max_target * 0.8)
+    
+    if byte_len > max_target: 
+        st.error(f"⚠️ 분량 초과: {byte_len} / 최대 {max_target} Bytes (AI가 목표치를 넘겼습니다. 살짝 다듬어주세요.)")
+    elif byte_len < min_target:
+        st.warning(f"⚠️ 분량 미달: {byte_len} Bytes (목표 최소치 {min_target} Bytes 미달). 팩트가 부족하여 AI가 말을 늘리지 못했습니다. 팩트를 더 추가해주세요.")
+    else: 
+        st.success(f"✅ 완벽 분량 달성: {byte_len} Bytes (목표 타겟: {min_target} ~ {max_target} Bytes 안착)")
+    
+    final_text = st.text_area("결과 확인/수정", value=res_text, height=250)
+
+    with st.expander("🔍 AI가 설계한 뼈대 훔쳐보기 (참고용)"):
+        st.info(st.session_state.current_template)
+
+    combined_eval = f"[탐구 역량] {report_eval}\n[인성/태도] {general_eval}"
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        pd.DataFrame([{
+            "날짜": datetime.now().strftime('%Y-%m-%d %H:%M'), 
+            "과목": subject, 
+            "등급": grade_level, 
+            "관찰팩트(통합)": combined_eval, 
+            "생성세특": final_text
+        }]).to_excel(writer, index=False)
+        
+    st.download_button(
+        label="📂 작성된 세특 엑셀로 다운로드 (개인 PC 보관)",
+        data=output.getvalue(),
+        file_name=f"{subject}_세특기록_{datetime.now().strftime('%m%d_%H%M')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
