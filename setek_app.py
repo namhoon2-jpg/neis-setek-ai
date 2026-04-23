@@ -76,35 +76,28 @@ st.title("📝 NEIS 세특 AI 어시스턴트")
 
 with st.sidebar:
     st.header("🧠 AI 지식 저장소")
-    
-    # 💡 수정된 부분: 가이드라인 업로드 시 PDF도 허용
-    db_file = st.file_uploader("지식 추가 (Excel 또는 PDF)", type=["xlsx", "pdf"], help="엑셀은 A열 내용을, PDF는 전체 텍스트를 학습하여 구글 시트에 영구 저장합니다.")
+    db_file = st.file_uploader("지식 추가 (Excel 또는 PDF)", type=["xlsx", "pdf"])
     
     if db_file and st.button("💾 구글 시트에 영구 누적하기", use_container_width=True):
         with st.spinner("지식을 추출하여 동기화 중입니다..."):
             new_texts = []
-            
-            # 파일 형식에 따른 텍스트 추출 로직 분기
             if db_file.name.endswith('.xlsx'):
                 df = pd.read_excel(db_file)
                 new_texts = df.iloc[:, 0].dropna().astype(str).tolist()
             elif db_file.name.endswith('.pdf'):
                 with pdfplumber.open(db_file) as pdf:
                     full_pdf_text = "".join([pg.extract_text() for pg in pdf.pages if pg.extract_text()])
-                    # PDF는 내용이 길 수 있으므로 1500자 단위로 끊어서 저장하거나 통째로 한 셀에 저장
                     new_texts = [full_pdf_text]
             
             if new_texts and GSHEET_WEBAPP_URL:
                 try:
                     response = requests.post(GSHEET_WEBAPP_URL, json={"texts": new_texts})
                     if response.status_code == 200:
-                        st.success(f"✅ {len(new_texts)}건의 지식 저장 완료!")
+                        st.success(f"✅ {len(new_texts)}건 지식 저장 완료!")
                         sync_with_gsheet()
                 except Exception as e: st.error(f"에러: {e}")
-            else: st.error("전송할 내용이 없거나 URL 설정이 누락되었습니다.")
 
     st.divider()
-    
     st.caption("현재 기억 상태")
     if st.button("🔄 최신 지식 불러오기", use_container_width=True):
         count = sync_with_gsheet()
@@ -116,16 +109,16 @@ with st.sidebar:
     st.session_state.target_bytes = target_bytes
     
     st.divider()
-    subject = st.text_input("과목명", placeholder="예: 미적분, 문학")
+    subject = st.text_input("과목명", placeholder="예: 미적분")
     grade_level = st.text_input("성취도/등급", placeholder="예: A")
-    teacher_eval = st.text_area("교사 관찰 팩트 (키워드)", placeholder="예: 발표에서 오개념 수정함. 조장 역할 수행.", height=100)
+    teacher_eval = st.text_area("교사 관찰 팩트 (키워드)", height=100)
     pdf_file = st.file_uploader("학생 보고서 (PDF) - 선택", type=["pdf"])
 
 if st.session_state.authenticated and not st.session_state.db_texts and GSHEET_CSV_URL:
     sync_with_gsheet()
 
 # ==========================================
-# 5. 생성 엔진 (V11의 강력한 통제 로직 유지)
+# 5. 생성 엔진
 # ==========================================
 if st.button("🚀 세특 초안 생성하기", type="primary", use_container_width=True):
     if not subject or not teacher_eval:
@@ -145,20 +138,31 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
                 trend = results[0]['body'] if results else "정보 없음"
             except: trend = "검색 생략"
 
-        with st.spinner("3/4: 뼈대 설계 중..."):
+        with st.spinner("3/4: 입체적 뼈대 설계 중..."):
             guidelines = "\n".join(st.session_state.db_texts) if st.session_state.db_texts else "객관적이고 건조한 문체."
-            safe_chars = (st.session_state.target_bytes - 100) // 3 
             
+            # 💡 V14 핵심 1: 뼈대부터 '주어 생략' 및 '4단 구조' 강제
             bp_prompt = f"""
             당신은 최고의 고등학교 {subject} 교사입니다.
-            아래 [공통 가이드라인]을 지켜서 '{subject}' 과목의 세특 우수 사례 1개를 가상으로 작성하세요.
-            [신뢰성 구조] "학생의 실제 활동(팩트)" + "교사의 객관적이고 짧은 평가" 패턴으로만 구성하세요.
+            [입체적 서사 구조] 반드시 다음의 4단계 서사 구조를 따르세요:
+            1. 동기/계기 (왜 이 탐구를 시작했는가)
+            2. 탐구 과정 (어떤 방법과 자료로 구체적으로 연구했는가)
+            3. 결과 (무엇을 알아내고 도출했는가)
+            4. 교사 평가 (이를 통해 엿보인 학생의 객관적 역량 1줄)
+            
+            [주어 완벽 생략] '학생은', '이 학생은' 등 주어를 일절 쓰지 마세요. 무조건 팩트로 바로 시작하세요.
             [공통 가이드라인] {guidelines}
+            위 규칙을 지켜 '{subject}' 과목의 세특 뼈대를 가상으로 작성하세요.
             """
             best_practice_template = model.generate_content(bp_prompt).text.strip()
             st.session_state.current_template = best_practice_template
 
         with st.spinner("4/4: 최종 세특 작성 중..."):
+            max_b = st.session_state.target_bytes
+            min_b = int(max_b * 0.8)
+            min_c, max_c = min_b // 3, max_b // 3
+            
+            # 💡 V14 핵심 2: 최종 생성 시에도 주어 삭제, 음슴체, 서사 구조 엄격 지시
             prompt = f"""
             아래 [데이터]만을 활용하여 학생의 실제 NEIS 교과세특을 작성하세요.
 
@@ -169,12 +173,15 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             - 학생 보고서: {student_report_text[:2000]}
             - 융합 트렌드: {trend}
 
-            [절대 모방 템플릿] {best_practice_template}
+            [절대 모방 템플릿] 
+            {best_practice_template}
 
-            [🔥 절대 엄수 규칙 🔥]
-            1. 오직 팩트 한정: [데이터]에 명시된 활동과 역량 외에는 절대 지어내지 마세요. 보고서가 없다면 관찰 팩트만으로 작성하세요.
-            2. 분량 절대 사수: 나이스 입력 최대치가 {st.session_state.target_bytes}바이트입니다. 반드시 {safe_chars}자 이내로 밀도 있게 마무리하세요.
-            3. 태그 금지: 결과물에 [{subject}] 같은 어떠한 태그나 제목도 적지 마세요. 단일 문단 내용만 출력하세요.
+            [🔥 5대 절대 엄수 규칙 🔥]
+            1. 주어(주체) 완벽 생략: 학생의 이름은 물론이고 '학생은', '본 학생은', '자신은' 등의 주어를 일절 사용하지 마세요. 바로 활동과 사실로 문장을 시작하세요.
+            2. 입체적 서사 구조: 반드시 [활동의 계기] ➡️ [탐구 과정] ➡️ [결과] ➡️ [교사의 짧은 평가] 순서로 전개하여 활동의 깊이를 보여주세요.
+            3. 분량 타겟팅 (80~100%): 내용이 빈약해 보이지 않도록 나이스 바이트 기준 {min_b} ~ {max_b} Bytes 사이를 꽉 채우세요 (한글 약 {min_c} ~ {max_c}자). 
+            4. 완벽한 음슴체 강제: 모든 문장의 끝은 반드시 명사형 종결어미(~함, ~임, ~됨, ~보임 등)로 끝나야 합니다. '~다', '~습니다' 절대 금지.
+            5. 팩트 한정: [데이터]에 없는 정보는 절대 지어내지 마세요.
             """
             response = model.generate_content(prompt)
             st.session_state.current_result = response.text.strip().replace('\n', ' ')
@@ -184,21 +191,29 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
 # ==========================================
 if st.session_state.current_result:
     res_text = st.session_state.current_result
-    # 과목명 태그 강제 삭제 처리
-    tag_to_remove = f"[{subject}]"
-    if res_text.startswith(tag_to_remove): res_text = res_text[len(tag_to_remove):].strip()
+    
+    tags_to_remove = [f"[{subject}]", "세특 우수 사례:", "가상 세특:", "최종 세특:"]
+    for tag in tags_to_remove:
+        if res_text.startswith(tag):
+            res_text = res_text[len(tag):].strip()
 
     st.divider()
-    st.subheader("🎯 생성된 맞춤형 세특 (팩트 한정)")
+    st.subheader("🎯 생성된 맞춤형 세특 (동기-과정-결과-평가)")
+    
     byte_len = get_byte_length(res_text)
-    target = st.session_state.target_bytes
+    max_target = st.session_state.target_bytes
+    min_target = int(max_target * 0.8)
     
-    if byte_len > target: st.error(f"⚠️ 목표 제한 초과: {byte_len} / {target} Bytes")
-    else: st.success(f"✅ 안전 분량 달성: {byte_len} / {target} Bytes")
+    if byte_len > max_target: 
+        st.error(f"⚠️ 분량 초과: {byte_len} / 최대 {max_target} Bytes (직접 일부 삭제가 필요합니다)")
+    elif byte_len < min_target:
+        st.warning(f"⚠️ 분량 미달: {byte_len} Bytes (목표 구간: {min_target} ~ {max_target} Bytes). 팩트를 더 넣어주시면 분량이 늘어납니다.")
+    else: 
+        st.success(f"✅ 완벽 분량 달성: {byte_len} Bytes (목표 구간: {min_target} ~ {max_target} Bytes 내 안착)")
     
-    final_text = st.text_area("결과 확인/수정", value=res_text, height=200)
+    final_text = st.text_area("결과 확인/수정", value=res_text, height=250)
 
-    with st.expander("🔍 AI가 설계한 '활동+평가 구조' 뼈대 훔쳐보기"):
+    with st.expander("🔍 AI가 설계한 '4단 구조' 뼈대 훔쳐보기"):
         st.info(st.session_state.current_template)
 
     output = io.BytesIO()
