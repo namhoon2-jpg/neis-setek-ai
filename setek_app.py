@@ -95,7 +95,7 @@ def sync_with_gsheet():
 # ==========================================
 # 4. 화면 구성 및 지식 영구 누적 (쓰기)
 # ==========================================
-st.title("📝 NEIS 세특 AI 어시스턴트 (V25: 다중 보고서 & 인지/인성 평가)")
+st.title("📝 NEIS 세특 AI 어시스턴트 (V26: 강제 컷오프 & 금지어 차단)")
 
 with st.sidebar:
     st.header("🧠 AI 지식 저장소")
@@ -144,18 +144,17 @@ with st.sidebar:
 st.subheader("👨‍🏫 교사 관찰 및 평가 (키워드 위주 작성)")
 col1, col2 = st.columns(2)
 
-# 💡 V25 핵심 업데이트: 입력창 명칭 및 안내 멘트 변경
 with col1:
     report_eval = st.text_area(
         "📄 활동/탐구 역량 평가", 
-        placeholder="학생이 제출한 (다중) 보고서 및 탐구 활동별로 어떤 계기로 무엇을 탐구했고 어떤 결과를 냈는지 구체적인 역량을 나누어 적어주세요.\n(예: [보고서1] 공식 유도 과정을 논리적으로 증명함. [보고서2] 수집된 데이터를 그래프로 시각화하여 분석함)", 
+        placeholder="학생이 제출한 보고서 및 탐구 활동별로 구체적인 역량을 적어주세요.", 
         height=180
     )
 
 with col2:
     general_eval = st.text_area(
         "🧑‍🏫 교사의 인지적/인성 평가", 
-        placeholder="학생의 지적 호기심, 끈기, 문제해결 태도, 리더십 등 인지적 특성과 인성적 측면에 대한 종합 평가를 적어주세요. 이 내용은 세특 마지막 문장에 자연스럽게 융합됩니다.\n(예: 복잡한 수식에도 포기하지 않고 끝까지 파고들어 해결해 내는 지적 끈기가 돋보임)", 
+        placeholder="학생의 인지적 특성과 인성적 측면(끈기, 태도 등)을 적어주세요. 마지막 결론으로 융합됩니다.", 
         height=180
     )
 
@@ -181,7 +180,6 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
                             for pg in pdf.pages:
                                 text = pg.extract_text()
                                 if text: report_content += text + "\n"
-                            # 다중 보고서 구분을 명확히 하기 위해 인덱스 추가
                             student_report_text += f"\n--- [보고서 {idx+1}] ---\n{report_content}"
                     except Exception as e:
                         st.warning(f"{file.name} 추출 오류: {e}")
@@ -207,19 +205,21 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             
             bp_prompt = f"""
             당신은 최고의 고등학교 {subject} 교사입니다.
-            [관찰 가능한 행동 동사] 교사가 직접 볼 수 없는 내면 상태('이해함', '체득함', '깨달음')는 절대 금지하고, 반드시 눈으로 확인 가능한 능동적 행동('증명함', '설명함', '적용함', '분석함')으로 우회하여 작성하세요.
-            [자연스러운 서사] 동기-과정-결과-평가가 기계적인 나열이 아닌, "A라는 호기심(동기)으로 B를 분석했고(과정), 그 결과 C를 도출함(결과). 이를 통해 D라는 역량을 확인함(평가)" 처럼 인과관계로 매끄럽게 이어지게 설계하세요. 여러 보고서가 있다면 활동들을 유기적으로 연결하세요.
+            [관찰 가능한 행동 동사] 내면 상태('이해함', '체득함', '깨달음') 절대 금지. 눈으로 확인 가능한 능동적 행동('증명함', '설명함', '분석함')으로 우회하세요.
+            [자연스러운 서사] 동기-과정-결과-평가가 기계적인 나열이 아닌 인과관계로 매끄럽게 이어지게 설계하세요.
             [공통 가이드라인] {guidelines}
-            위 대전제를 지켜 '{subject}' 과목의 세특 뼈대를 가상으로 작성하세요.
+            위 규칙을 지켜 '{subject}' 과목의 세특 뼈대를 가상으로 작성하세요.
             """
             best_practice_template = model.generate_content(bp_prompt).text.strip()
             st.session_state.current_template = best_practice_template
 
         with st.spinner("4/4: 데이터 분할 융합 및 최종 세특 작성 중..."):
+            # 💡 V26 핵심 1: 파이썬 단 글자 수 목표치 대폭 하향 (오버런 절대 방어)
             max_b = st.session_state.target_bytes
             min_b = int(max_b * 0.8)
-            max_c = (max_b // 3) - 10  
-            min_c = (min_b // 3)
+            # 최대치를 안전하게 10% 더 깎아서 프롬프트에 전달
+            safe_max_c = int((max_b / 3) * 0.9) 
+            min_c = int(min_b / 3)
             
             prompt = f"""
             아래 [데이터]만을 활용하여 학생의 실제 NEIS 교과세특을 작성하세요.
@@ -235,15 +235,15 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             [절대 모방 템플릿] 
             {best_practice_template}
 
-            [🔥 대전제: AI 냄새 완벽 제거 & 능동적 관찰 무결성 🔥]
-            1. 관찰 가능한 능동태 동사 강제 (매우 중요): 교사가 직접 확인할 수 없는 학생의 내면 상태("이해함", "체득함", "깨달음", "느낌")를 묘사하는 동사를 절대 사용하지 마세요. 대신 학생의 역량을 증명할 수 있는 구체적인 능동적 행동("~을 수학적으로 증명함", "~을 논리적으로 설명함", "~분석 결과를 도출함")으로 우회하여 서술하세요.
-            2. 데이터 분할 융합: <활동/탐구 역량 평가>와 <학생 다중 보고서 텍스트>를 엮어 전반부의 탐구 과정을 작성하고, <교사의 인지적/인성 평가>는 태도 부사로 녹여내거나 글의 맨 마지막 결론으로 묵직하게 꽂아 넣으세요.
-            3. 분량 절대 강제 (생존 규칙): 한글 글자 수를 무조건 **최소 {min_c}자 이상, 최대 {max_c}자 이하**로 꽉 채워 작성하세요. 미달 시 절대 안 됩니다.
-            4. 상투적 표현 철폐: "~활동을 통해", "~과정에서", "~뿐만 아니라", "보여줌", "탁월한", "우수한" 등 식상한 전환어와 주관적 찬양을 완벽히 배제하세요. 오직 건조한 팩트로만 구성하세요.
-            5. 자연스러운 4단 흐름: [활동 계기] ➡️ [구체적 탐구 과정] ➡️ [결과 도출] ➡️ [교사의 최종 평가] 순으로 이어지되, 번호나 소제목 없이 하나의 덩어리(단일 문단) 안에서 물 흐르듯 인과관계로 연결되게 작성하세요.
-            6. 수식 한글화: NEIS 오류 방지를 위해 기호, 첨자, 수식을 한글 개념어(예: 삼각함수, 첫 번째 길이 등)로 풀어 쓰세요.
-            7. 주어/메타 단어 금지: '학생은', '실명', '세특', '생기부' 등의 단어를 원천 차단하세요.
-            8. 완벽한 음슴체: 모든 문장 끝은 명사형 종결어미(~함, ~임, ~됨 등)로 끝내고, 결과물 앞뒤에 과목명이나 태그를 달지 마세요.
+            [❌ 절대 금지어 사전 (이 단어들이 1번이라도 포함되면 시스템이 붕괴됩니다) ❌]
+            - "세특", "교과세특", "생기부", "학교생활기록부", "기록", "이 학생은", "학생은", "본 학생은", "체득함", "이해함", "깨달음", "느낌"
+
+            [🔥 5대 절대 엄수 규칙 🔥]
+            1. 분량 및 문장 수 강제 (초과 절대 금지): 반드시 전체 내용을 **3~4문장** 이내로 압축하세요. 전체 글자 수는 **{min_c}자 이상, {safe_max_c}자 이하**로 끝내야 하며, {safe_max_c}자를 넘기는 순간 즉시 문장을 종료하세요.
+            2. 관찰 가능한 능동태 동사: 금지된 내면 상태 동사 대신, "~을 논리적으로 설명함", "~분석 결과를 도출함" 등 구체적인 능동 행동으로 서술하세요.
+            3. 자연스러운 4단 흐름: [활동 계기] ➡️ [구체적 탐구 과정] ➡️ [결과 도출] ➡️ [교사의 최종 인지/인성 평가] 순으로 이어지되, 번호나 소제목 없이 하나의 단일 문단으로 이어지게 작성하세요.
+            4. 상투적 표현 철폐: "~활동을 통해", "~뿐만 아니라", "보여줌", "탁월한", "우수한" 등 AI 특유의 식상한 전환어와 주관적 찬양을 완벽히 배제하세요.
+            5. 완벽한 음슴체 및 기호 금지: 모든 수식은 한글로 풀고, 모든 문장 끝은 명사형 종결어미(~함, ~임, ~됨 등)로 끝내세요. 앞뒤 태그 금지.
             """
             response = model.generate_content(prompt)
             st.session_state.current_result = response.text.strip().replace('\n', ' ')
@@ -254,22 +254,30 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
 if st.session_state.current_result:
     res_text = st.session_state.current_result
     
+    # 파이썬 레벨 찌꺼기 태그 철저히 제거
     tags_to_remove = [f"[{subject}]", f"{subject}", "세특 우수 사례:", "가상 세특:", "최종 세특:", "1. ", "동기:", "탐구 과정:"]
     for tag in tags_to_remove:
         if res_text.startswith(tag):
             res_text = res_text[len(tag):].strip()
 
+    # 💡 V26 핵심 3: 파이썬 단에서 혹시라도 등장한 금지어 필터링 알림
+    forbidden_words = ["세특", "교과세특", "생기부", "학교생활기록부", "이해함", "체득함", "학생은"]
+    detected_forbidden = [fw for fw in forbidden_words if fw in res_text]
+    
     st.divider()
-    st.subheader("🎯 생성된 맞춤형 세특 (다중 보고서 맞춤 평가 완료)")
+    if detected_forbidden:
+        st.warning(f"⚠️ 시스템에서 다음 금지어가 감지되었습니다: {', '.join(detected_forbidden)}. 출력 결과를 확인하시고 해당 부분을 살짝 수정해 주세요.")
+
+    st.subheader("🎯 생성된 맞춤형 세특 (강제 컷오프 & 금지어 차단 완료)")
     
     byte_len = get_byte_length(res_text)
     max_target = st.session_state.target_bytes
     min_target = int(max_target * 0.8)
     
     if byte_len > max_target: 
-        st.error(f"⚠️ 분량 초과: {byte_len} / 최대 {max_target} Bytes (AI가 목표치를 넘겼습니다. 살짝 다듬어주세요.)")
+        st.error(f"⚠️ 분량 초과: {byte_len} / 최대 {max_target} Bytes (목표 분량을 넘었습니다. 끝부분을 직접 다듬어주세요.)")
     elif byte_len < min_target:
-        st.warning(f"⚠️ 분량 미달: {byte_len} Bytes (목표 최소치 {min_target} Bytes 미달). 팩트가 부족하여 AI가 말을 늘리지 못했습니다. 팩트를 더 추가해주세요.")
+        st.warning(f"⚠️ 분량 미달: {byte_len} Bytes (목표 최소치 {min_target} Bytes 미달). 팩트가 더 필요합니다.")
     else: 
         st.success(f"✅ 완벽 분량 달성: {byte_len} Bytes (목표 타겟: {min_target} ~ {max_target} Bytes 안착)")
     
@@ -278,7 +286,6 @@ if st.session_state.current_result:
     with st.expander("🔍 AI가 설계한 뼈대 훔쳐보기 (참고용)"):
         st.info(st.session_state.current_template)
 
-    # 💡 엑셀 저장 시 바뀐 명칭 적용
     combined_eval = f"[탐구 역량 평가] {report_eval}\n[인지적/인성 평가] {general_eval}"
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
