@@ -24,7 +24,7 @@ def get_secret(key, default=""):
     except Exception:
         return default
 
-APP_PASSWORD = "1234" 
+APP_PASSWORD = "2848" 
 GSHEET_CSV_URL = get_secret("GSHEET_CSV_URL", "")
 GSHEET_WEBAPP_URL = get_secret("GSHEET_WEBAPP_URL", "")
 GEMINI_API_KEY = get_secret("GEMINI_API_KEY", "")
@@ -95,7 +95,7 @@ def sync_with_gsheet():
 # ==========================================
 # 4. 화면 구성 및 사이드바
 # ==========================================
-st.title("📝 NEIS 세특 AI 어시스턴트 (V43: AI 티 완벽 제거 및 궁극의 자연스러운 서사)")
+st.title("📝 NEIS 세특 AI 어시스턴트")
 
 with st.sidebar:
     st.header("📝 기본 정보")
@@ -347,7 +347,7 @@ if st.session_state.current_result:
     st.session_state.current_result = res_text
 
     st.divider()
-    st.subheader("🎯 생성된 맞춤형 세특 (AI 티 완벽 제거 및 자연스러운 흐름 적용)")
+    st.subheader("🎯 생성된 맞춤형 세특")
     
     byte_len = get_byte_length(res_text)
     min_target = int(max_target * 0.8)
