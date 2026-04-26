@@ -95,7 +95,7 @@ def sync_with_gsheet():
 # ==========================================
 # 4. 화면 구성 및 사이드바
 # ==========================================
-st.title("📝 NEIS 세특 AI 어시스턴트 (V37: 실명/수식 원천 차단판)")
+st.title("📝 NEIS 세특 AI 어시스턴트 (V39: 완벽한 서사 흐름판)")
 
 with st.sidebar:
     st.header("📝 기본 정보")
@@ -142,8 +142,8 @@ col1, col2 = st.columns(2)
 
 with col1:
     report_eval = st.text_area(
-        "📄 활동/탐구 역량 평가 (비워두면 AI 자동 분석)", 
-        placeholder="보고서의 팩트는 AI가 추출합니다. 특별히 강조하고 싶은 [교사 평가]가 있다면 적어주세요.", 
+        "📄 교사의 활동/탐구 역량 평가", 
+        placeholder="특별히 강조하고 싶은 [교사 평가]가 있다면 적어주세요.\n(비워두실 경우 AI가 보고서를 분석하여 탐구 역량을 스스로 판단하여 평가합니다.)", 
         height=180
     )
 
@@ -160,7 +160,7 @@ if st.session_state.authenticated and not st.session_state.db_texts and GSHEET_C
     sync_with_gsheet()
 
 # ==========================================
-# 5. 생성 엔진
+# 5. 생성 엔진 (💡 프롬프트만 수정, 코드는 유지)
 # ==========================================
 if st.button("🚀 세특 초안 생성하기", type="primary", use_container_width=True):
     if not subject:
@@ -201,7 +201,7 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             bp_prompt = f"""
             당신은 최고의 고등학교 {subject} 교사입니다.
             [관찰 가능한 행동 동사] 내면 상태('이해함', '체득함') 절대 금지. 능동적 행동('증명함', '분석함')으로 우회하세요.
-            [동기-과정-결과-평가 순서 엄수] 1.활동 동기 -> 2.탐구 과정 -> 3.결과 도출 -> 4.교사 평가의 순서로 서술하세요.
+            [동기-과정-결과-평가 흐름] 1.활동 동기 -> 2.탐구 과정 -> 3.결과 도출 -> 4.교사 평가(없으면 AI가 직접 평가)의 순서로 인과관계가 자연스럽게 이어지도록 서술하세요. 과정 중간에 "이는 ~ 핵심 과정임" 같은 메타 평가는 금지합니다.
             [공통 가이드라인] {guidelines}
             위 규칙을 지켜 '{subject}' 과목의 세특 뼈대를 단일 문단으로 가상으로 작성하세요.
             """
@@ -214,43 +214,40 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             safe_max_c = int((max_b / 3) * 0.95) 
             min_c = int(min_b / 3)
             
-            # 💡 V37 핵심 1: 실명 및 수식/영문 100% 금지 및 한글 치환 지시
             prompt = f"""
             아래 [데이터]만을 활용하여 학생의 실제 NEIS 교과세특을 작성하세요.
 
             [데이터]
             - 과목명: {subject}
             - 성취도: {grade_level}
-            - 교사의 보고서 역량 평가: {report_eval if report_eval.strip() else "(자동 분석)"}
-            - 교사의 인지적/인성 평가: {general_eval if general_eval.strip() else "(미기재)"}
+            - 교사의 보고서 역량 평가: {report_eval if report_eval.strip() else "(없음 - AI가 보고서를 바탕으로 역량을 직접 도출하여 평가할 것)"}
+            - 교사의 인지적/인성 평가: {general_eval if general_eval.strip() else "(없음 - AI가 보고서를 바탕으로 역량을 직접 도출하여 평가할 것)"}
             - 학생 다중 보고서 텍스트: {student_report_text[:2000]}
 
-            [🔥 V37 최우선 엄수 규칙: 실명/수식 차단 및 서사 최적화 🔥]
-            1. 실명 노출 절대 금지 (시스템 오류 원인): 보고서에 기재된 학생의 본명(예: 김철수, 홍길동)이 단 1글자라도 출력되면 안 됩니다. 주어 자체를 생략하고 바로 활동 내용으로 시작하세요.
-            2. 영문 알파벳 및 수식 기호 전면 금지: x, y, L1, theta, +, -, =, ^ 등의 수학 기호나 영문 변수를 단 한 글자도 쓰지 마세요. 무조건 '가로축 좌표', '첫 번째 링크 길이', '관절 각도'와 같이 100% 순수 한글 명사로만 치환하여 요약하세요. (Python -> 파이썬, Arduino -> 아두이노 로 한글 표기)
-            3. 나열식 부사 절대 금지 (꼬리물기 흐름): '먼저,', '이후,', '그 다음,', '결과적으로,' 처럼 기계적인 순서 나열 부사를 절대 쓰지 마세요. A라는 탐구를 하던 중 발생한 호기심이나 필요성이 다음 단계인 B로 이어지는 '유기적 인과관계'로 문장을 연결하세요.
-            4. 학교생활 맞춤 어휘 사용: '동료'라는 단어는 반드시 '급우' 또는 '모둠원'으로 쓰세요. '경험임'과 같은 어색한 평가를 금지하고, '~하는 역량을 기름'으로 마무리하세요.
-            5. 분량 및 팩트 보존: 글자 수를 무조건 **최소 {min_c}자 이상, {safe_max_c}자 이하**로 꽉 채우세요.
-            6. 능동태 및 완벽한 음슴체: '~습니다', '~어요' 금지. 문장 끝은 명사형 종결어미(~함, ~임, ~됨 등)로 끝내세요.
+            [🔥 V39 최우선 엄수 규칙: 자연스러운 흐름 및 중간 요약 금지 🔥]
+            1. 동기-과정-결과-평가의 완벽한 흐름 (AI 자동 평가 허용): [활동 동기] ➡️ [구체적 탐구 과정] ➡️ [결과 도출] ➡️ [최종 평가] 순서로 자연스러운 꼬리물기 흐름을 만드세요. 마지막 [최종 평가]에는 교사의 입력이 있으면 그것을 쓰고, 없다면 AI가 보고서를 분석해 학생의 학업 역량과 태도를 직접 평가하여 자연스럽게 글을 닫아주세요.
+            2. 과정 중 의미 부여(메타 평가) 금지: 탐구 과정을 서술하는 중간에 "이는 ~하는 핵심 과정임", "이는 ~을 분석하기 위함임" 처럼 행동의 의의를 거창하게 요약하거나 스스로 포장하는 멘트를 절대 넣지 마세요. 과정은 철저히 팩트(구체적 행동)만 적어주세요.
+            3. 실명 노출 절대 금지 (시스템 오류 원인): 보고서에 기재된 학생의 본명(예: 김철수, 홍길동)이 단 1글자라도 출력되면 안 됩니다. 주어 자체를 생략하세요.
+            4. 영문 알파벳 및 수식 기호 전면 금지: x, y, L1, theta, +, -, =, ^ 등의 수학 기호나 영문 변수를 단 한 글자도 쓰지 마세요. 무조건 순수 한글 명사로만 치환하여 요약하세요. (Python -> 파이썬 등)
+            5. 학교생활 맞춤 어휘 사용: '동료'라는 단어는 반드시 '급우' 또는 '모둠원'으로 쓰세요.
+            6. 분량 및 팩트 보존: 글자 수를 무조건 **최소 {min_c}자 이상, {safe_max_c}자 이하**로 꽉 채우세요.
+            7. 능동태 및 완벽한 음슴체: '~습니다', '~어요' 금지. 문장 끝은 명사형 종결어미(~함, ~임, ~됨 등)로 끝내세요.
             """
             response = model.generate_content(prompt)
             st.session_state.current_result = response.text.strip()
 
 # ==========================================
-# 6. 결과 출력 및 파이썬 스마트 컷오프 (멸균)
+# 6. 결과 출력 및 파이썬 스마트 컷오프 (멸균 유지)
 # ==========================================
 if st.session_state.current_result:
     res_text = st.session_state.current_result
     
-    # 💡 V37 핵심 2: 나이스 입력 불가 특수기호(LaTeX 수식 기호) 물리적 멸균
-    res_text = re.sub(r'[\$\^_\\]', '', res_text)  # $, ^, _, \ 완전 삭제
+    res_text = re.sub(r'[\$\^_\\]', '', res_text) 
     res_text = res_text.replace("{", "").replace("}", "")
 
-    # 1. 마크다운 기호 및 줄바꿈 물리적 파괴
     res_text = res_text.replace("**", "").replace("*", "").replace("#", "")
     res_text = re.sub(r'\n+', ' ', res_text).strip()
 
-    # 2. 제목 및 태그 찌꺼기 절단
     prefixes_to_remove = [
         f"[{subject}]", f"{subject}", "세특 우수 사례:", "가상 세특:", "최종 세특:", 
         "과목명:", "과목에서 ", "본 과목에서 ", "이 과목에서 ", "제목:", "내용:", "세특:", "교과세특:"
@@ -260,7 +257,6 @@ if st.session_state.current_result:
             if res_text.startswith(prefix):
                 res_text = res_text[len(prefix):].strip()
 
-    # 3. 존댓말 및 기괴한 어미 강제 교정
     res_text = re.sub(r'([가-힣]+)하였습니다\.', r'\1함.', res_text)
     res_text = re.sub(r'([가-힣]+)했습니다\.', r'\1함.', res_text)
     res_text = re.sub(r'([가-힣]+)보였습니다\.', r'\1보임.', res_text)
@@ -268,7 +264,6 @@ if st.session_state.current_result:
     res_text = re.sub(r'([가-힣]+)있습니다\.', r'\1있음.', res_text)
     res_text = re.sub(r'([가-힣]+)습니다\.', r'\1음.', res_text)
 
-    # 4. 금지어 및 학교 부적합 어휘 강제 치환 (동료, 경험임 등)
     forbidden_replacements = {
         "이 학생은 ": "", "본 학생은 ": "", "학생은 ": "", "자신은 ": "",
         "교과세특": "기록", "세특": "기록", "생기부": "기록", "학교생활기록부": "기록",
@@ -283,7 +278,6 @@ if st.session_state.current_result:
     for bad_word, good_word in forbidden_replacements.items():
         res_text = res_text.replace(bad_word, good_word)
 
-    # 5. 진정한 문장 단위 스마트 컷오프 (바이트 초과 방지)
     max_target = st.session_state.target_bytes
     if get_byte_length(res_text) > max_target:
         sentences = [s.strip() + "." for s in res_text.split('.') if s.strip()]
@@ -306,7 +300,7 @@ if st.session_state.current_result:
     st.session_state.current_result = res_text
 
     st.divider()
-    st.subheader("🎯 생성된 맞춤형 세특 (실명 및 수식 완벽 차단 완료)")
+    st.subheader("🎯 생성된 맞춤형 세특 (흐름 최적화 및 메타 평가 금지)")
     
     byte_len = get_byte_length(res_text)
     min_target = int(max_target * 0.8)
@@ -321,8 +315,8 @@ if st.session_state.current_result:
     with st.expander("🔍 AI가 설계한 뼈대 훔쳐보기 (참고용)"):
         st.info(st.session_state.current_template)
 
-    report_eval_record = report_eval if report_eval.strip() else "(자동 분석)"
-    general_eval_record = general_eval if general_eval.strip() else "(미기재)"
+    report_eval_record = report_eval if report_eval.strip() else "(AI 자동 평가)"
+    general_eval_record = general_eval if general_eval.strip() else "(AI 자동 평가)"
     combined_eval = f"[탐구 역량] {report_eval_record}\n[인지/인성] {general_eval_record}"
     
     output = io.BytesIO()
