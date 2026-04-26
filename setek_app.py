@@ -24,7 +24,7 @@ def get_secret(key, default=""):
     except Exception:
         return default
 
-APP_PASSWORD = "1234" 
+APP_PASSWORD = "2848" 
 GSHEET_CSV_URL = get_secret("GSHEET_CSV_URL", "")
 GSHEET_WEBAPP_URL = get_secret("GSHEET_WEBAPP_URL", "")
 GEMINI_API_KEY = get_secret("GEMINI_API_KEY", "")
@@ -95,7 +95,7 @@ def sync_with_gsheet():
 # ==========================================
 # 4. 화면 구성 및 사이드바
 # ==========================================
-st.title("📝 NEIS 세특 AI 어시스턴트 (V35: 서사 구조 최적화)")
+st.title("📝 NEIS 세특 AI 어시스턴트")
 
 with st.sidebar:
     st.header("📝 기본 정보")
@@ -198,25 +198,23 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
         with st.spinner("3/4: 입체적 뼈대 설계 중..."):
             guidelines = "\n".join(st.session_state.db_texts) if st.session_state.db_texts else "객관적이고 건조한 문체."
             
-            # 💡 수정 포인트 1: 뼈대 설계에서부터 순서와 문맥 강제
             bp_prompt = f"""
             당신은 최고의 고등학교 {subject} 교사입니다.
             [관찰 가능한 행동 동사] 내면 상태('이해함', '체득함') 절대 금지. 능동적 행동('증명함', '분석함')으로 우회하세요.
-            [동기-과정-결과-평가 순서 엄수] 반드시 1.활동 동기 -> 2.탐구 과정 -> 3.결과 도출 -> 4.교사 평가의 순서로 서술하세요.
-            [자연스러운 문맥 흐름] 문장들이 뚝뚝 끊기지 않고 원인과 결과로 자연스럽게 이어지도록 설계하세요.
+            [동기-과정-결과-평가 순서 엄수] 1.활동 동기 -> 2.탐구 과정 -> 3.결과 도출 -> 4.교사 평가의 순서로 서술하세요.
             [공통 가이드라인] {guidelines}
             위 규칙을 지켜 '{subject}' 과목의 세특 뼈대를 단일 문단으로 가상으로 작성하세요.
             """
             best_practice_template = model.generate_content(bp_prompt).text.strip()
             st.session_state.current_template = best_practice_template
 
-        with st.spinner("4/4: 수식 추상화 및 팩트 기반 서술 중..."):
+        with st.spinner("4/4: 수식 추상화 및 문맥 꼬리물기 서술 중..."):
             max_b = st.session_state.target_bytes
             min_b = int(max_b * 0.8)
             safe_max_c = int((max_b / 3) * 0.95) 
             min_c = int(min_b / 3)
             
-            # 💡 수정 포인트 2: 최종 작성 프롬프트에 2가지 요구사항 명확히 반영
+            # 💡 V36 핵심 1: 나열식 금지 및 고교생 맞춤 어휘 강조
             prompt = f"""
             아래 [데이터]만을 활용하여 학생의 실제 NEIS 교과세특을 작성하세요.
 
@@ -227,21 +225,21 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             - 교사의 인지적/인성 평가: {general_eval if general_eval.strip() else "(미기재)"}
             - 학생 다중 보고서 텍스트: {student_report_text[:2000]}
 
-            [🔥 V35 최우선 엄수 규칙: 서사 구조 및 문맥 흐름 🔥]
-            1. 동기-과정-결과-평가 순서 엄수: 글의 구조는 반드시 [활동 동기] ➡️ [구체적 탐구 과정] ➡️ [도출된 결과] ➡️ [교사의 인지적/인성 평가] 순서로 전개해야 합니다. 역순이 되거나 순서가 뒤섞이면 안 됩니다.
-            2. 자연스러운 문맥 흐름: 각 단계가 기계적으로 나열되지 않도록 하세요. 앞 문장의 탐구 내용이 뒷 문장 분석의 원인이 되는 등, 내용상 매끄럽고 자연스러운 문맥 흐름을 완성하세요.
-            3. 간결한 호흡: 한 문장이 너무 길어지지 않도록, 팩트 단위로 문장을 적절히 끊어서 서술하세요.
-            4. 자연스러운 시작: 절대 '과목에서' 같은 말로 시작하지 마세요. 호기심이나 동기로 자연스럽게 직행하세요.
-            5. 수식 절대 작성 금지 (추상화 요약): 수식이나 공식을 한글 발음으로 절대 적지 마세요. "수학적 원리를 도출함"과 같이 '원리와 목적'만 우회하여 압축하세요.
-            6. 분량 및 팩트 보존: 글자 수를 무조건 **최소 {min_c}자 이상, {safe_max_c}자 이하**로 꽉 채우세요.
-            7. 마크다운/기호/실명/제목 완벽 금지.
-            8. 능동태 및 완벽한 음슴체: 절대 '~습니다', '~어요'를 쓰지 마세요. 문장 끝은 반드시 명사형 종결어미(~함, ~임, ~됨 등)로 끝내야 합니다.
+            [🔥 V36 최우선 엄수 규칙: 나열식 금지 및 서사 최적화 🔥]
+            1. 나열식 부사 절대 금지 (꼬리물기 흐름): '먼저,', '이후,', '그 다음,', '결과적으로,' 처럼 기계적인 순서 나열 부사를 절대 쓰지 마세요. A라는 탐구를 하던 중 발생한 호기심이나 필요성이 다음 단계인 B로 이어지는 '유기적 인과관계'로 문장을 연결하세요.
+            2. 학교생활 맞춤 어휘 사용: '동료'라는 단어는 직장에 어울리므로 반드시 '급우' 또는 '모둠원'으로 쓰세요. 또한 '경험임'과 같은 어색한 평가를 금지하고, '~하는 역량을 기름', '~기반을 마련함'으로 자연스럽게 평가하세요.
+            3. 동기-과정-결과-평가 순서 엄수: 역순이나 뒤섞임 없이 순서를 전개하세요.
+            4. 간결한 호흡: 한 문장이 너무 길지 않게 팩트 단위로 적절히 끊어주세요.
+            5. 자연스러운 시작: '과목에서', '이 과목에서는' 같은 불필요한 서두 없이 바로 활동과 동기로 직행하세요.
+            6. 수식 추상화 요약: 수식을 한글 발음으로 나열하지 말고, "수학적 원리를 도출함" 같이 목적만 우회하여 압축하세요.
+            7. 분량 및 팩트 보존: 글자 수를 무조건 **최소 {min_c}자 이상, {safe_max_c}자 이하**로 꽉 채우세요. 마크다운/기호/실명/제목 절대 금지.
+            8. 능동태 및 완벽한 음슴체: '~습니다', '~어요' 금지. 문장 끝은 명사형 종결어미(~함, ~임, ~됨 등)로 끝내세요.
             """
             response = model.generate_content(prompt)
             st.session_state.current_result = response.text.strip()
 
 # ==========================================
-# 6. 결과 출력 및 파이썬 스마트 컷오프
+# 6. 결과 출력 및 파이썬 스마트 컷오프 (멸균)
 # ==========================================
 if st.session_state.current_result:
     res_text = st.session_state.current_result
@@ -260,7 +258,7 @@ if st.session_state.current_result:
             if res_text.startswith(prefix):
                 res_text = res_text[len(prefix):].strip()
 
-    # 3. 존댓말 및 기괴한 어미 강제 교정 (정규식 및 치환)
+    # 3. 존댓말 및 기괴한 어미 강제 교정
     res_text = re.sub(r'([가-힣]+)하였습니다\.', r'\1함.', res_text)
     res_text = re.sub(r'([가-힣]+)했습니다\.', r'\1함.', res_text)
     res_text = re.sub(r'([가-힣]+)보였습니다\.', r'\1보임.', res_text)
@@ -268,7 +266,7 @@ if st.session_state.current_result:
     res_text = re.sub(r'([가-힣]+)있습니다\.', r'\1있음.', res_text)
     res_text = re.sub(r'([가-힣]+)습니다\.', r'\1음.', res_text)
 
-    # 금지어 및 기괴한 어미 치환
+    # 💡 V36 핵심 2: 금지어 및 학교 부적합 어휘 강제 치환 (동료, 경험임 등)
     forbidden_replacements = {
         "이 학생은 ": "", "본 학생은 ": "", "학생은 ": "", "자신은 ": "",
         "교과세특": "기록", "세특": "기록", "생기부": "기록", "학교생활기록부": "기록",
@@ -276,7 +274,9 @@ if st.session_state.current_result:
         "모습을함": "모습을 보임", "모습을 함": "모습을 보임", 
         "태도를함": "태도를 지님", "태도를 함": "태도를 지님",
         "자신감함": "자신감을 보임", "자신감을함": "자신감을 보임", "자신감임": "자신감을 보임",
-        "나섰습니다.": "나섬.", "임했습니다.": "임함."
+        "나섰습니다.": "나섬.", "임했습니다.": "임함.",
+        "동료": "급우", "동료들": "급우들",
+        "경험임.": "역량을 기름.", "경험임": "역량을 기름"
     }
     for bad_word, good_word in forbidden_replacements.items():
         res_text = res_text.replace(bad_word, good_word)
@@ -304,7 +304,7 @@ if st.session_state.current_result:
     st.session_state.current_result = res_text
 
     st.divider()
-    st.subheader("🎯 생성된 맞춤형 세특 (서사 구조 및 문맥 최적화 적용)")
+    st.subheader("🎯 생성된 맞춤형 세특 (나열식 타파 및 어휘 교정 완료)")
     
     byte_len = get_byte_length(res_text)
     min_target = int(max_target * 0.8)
