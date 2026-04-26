@@ -24,7 +24,7 @@ def get_secret(key, default=""):
     except Exception:
         return default
 
-APP_PASSWORD = "2848" 
+APP_PASSWORD = "1234" 
 GSHEET_CSV_URL = get_secret("GSHEET_CSV_URL", "")
 GSHEET_WEBAPP_URL = get_secret("GSHEET_WEBAPP_URL", "")
 GEMINI_API_KEY = get_secret("GEMINI_API_KEY", "")
@@ -95,7 +95,7 @@ def sync_with_gsheet():
 # ==========================================
 # 4. 화면 구성 및 사이드바
 # ==========================================
-st.title("📝 NEIS 세특 AI 어시스턴트")
+st.title("📝 NEIS 세특 AI 어시스턴트 (V37: 실명/수식 원천 차단판)")
 
 with st.sidebar:
     st.header("📝 기본 정보")
@@ -208,13 +208,13 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             best_practice_template = model.generate_content(bp_prompt).text.strip()
             st.session_state.current_template = best_practice_template
 
-        with st.spinner("4/4: 수식 추상화 및 문맥 꼬리물기 서술 중..."):
+        with st.spinner("4/4: 수식 차단 및 문맥 꼬리물기 서술 중..."):
             max_b = st.session_state.target_bytes
             min_b = int(max_b * 0.8)
             safe_max_c = int((max_b / 3) * 0.95) 
             min_c = int(min_b / 3)
             
-            # 💡 V36 핵심 1: 나열식 금지 및 고교생 맞춤 어휘 강조
+            # 💡 V37 핵심 1: 실명 및 수식/영문 100% 금지 및 한글 치환 지시
             prompt = f"""
             아래 [데이터]만을 활용하여 학생의 실제 NEIS 교과세특을 작성하세요.
 
@@ -225,15 +225,13 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
             - 교사의 인지적/인성 평가: {general_eval if general_eval.strip() else "(미기재)"}
             - 학생 다중 보고서 텍스트: {student_report_text[:2000]}
 
-            [🔥 V36 최우선 엄수 규칙: 나열식 금지 및 서사 최적화 🔥]
-            1. 나열식 부사 절대 금지 (꼬리물기 흐름): '먼저,', '이후,', '그 다음,', '결과적으로,' 처럼 기계적인 순서 나열 부사를 절대 쓰지 마세요. A라는 탐구를 하던 중 발생한 호기심이나 필요성이 다음 단계인 B로 이어지는 '유기적 인과관계'로 문장을 연결하세요.
-            2. 학교생활 맞춤 어휘 사용: '동료'라는 단어는 직장에 어울리므로 반드시 '급우' 또는 '모둠원'으로 쓰세요. 또한 '경험임'과 같은 어색한 평가를 금지하고, '~하는 역량을 기름', '~기반을 마련함'으로 자연스럽게 평가하세요.
-            3. 동기-과정-결과-평가 순서 엄수: 역순이나 뒤섞임 없이 순서를 전개하세요.
-            4. 간결한 호흡: 한 문장이 너무 길지 않게 팩트 단위로 적절히 끊어주세요.
-            5. 자연스러운 시작: '과목에서', '이 과목에서는' 같은 불필요한 서두 없이 바로 활동과 동기로 직행하세요.
-            6. 수식 추상화 요약: 수식을 한글 발음으로 나열하지 말고, "수학적 원리를 도출함" 같이 목적만 우회하여 압축하세요.
-            7. 분량 및 팩트 보존: 글자 수를 무조건 **최소 {min_c}자 이상, {safe_max_c}자 이하**로 꽉 채우세요. 마크다운/기호/실명/제목 절대 금지.
-            8. 능동태 및 완벽한 음슴체: '~습니다', '~어요' 금지. 문장 끝은 명사형 종결어미(~함, ~임, ~됨 등)로 끝내세요.
+            [🔥 V37 최우선 엄수 규칙: 실명/수식 차단 및 서사 최적화 🔥]
+            1. 실명 노출 절대 금지 (시스템 오류 원인): 보고서에 기재된 학생의 본명(예: 김철수, 홍길동)이 단 1글자라도 출력되면 안 됩니다. 주어 자체를 생략하고 바로 활동 내용으로 시작하세요.
+            2. 영문 알파벳 및 수식 기호 전면 금지: x, y, L1, theta, +, -, =, ^ 등의 수학 기호나 영문 변수를 단 한 글자도 쓰지 마세요. 무조건 '가로축 좌표', '첫 번째 링크 길이', '관절 각도'와 같이 100% 순수 한글 명사로만 치환하여 요약하세요. (Python -> 파이썬, Arduino -> 아두이노 로 한글 표기)
+            3. 나열식 부사 절대 금지 (꼬리물기 흐름): '먼저,', '이후,', '그 다음,', '결과적으로,' 처럼 기계적인 순서 나열 부사를 절대 쓰지 마세요. A라는 탐구를 하던 중 발생한 호기심이나 필요성이 다음 단계인 B로 이어지는 '유기적 인과관계'로 문장을 연결하세요.
+            4. 학교생활 맞춤 어휘 사용: '동료'라는 단어는 반드시 '급우' 또는 '모둠원'으로 쓰세요. '경험임'과 같은 어색한 평가를 금지하고, '~하는 역량을 기름'으로 마무리하세요.
+            5. 분량 및 팩트 보존: 글자 수를 무조건 **최소 {min_c}자 이상, {safe_max_c}자 이하**로 꽉 채우세요.
+            6. 능동태 및 완벽한 음슴체: '~습니다', '~어요' 금지. 문장 끝은 명사형 종결어미(~함, ~임, ~됨 등)로 끝내세요.
             """
             response = model.generate_content(prompt)
             st.session_state.current_result = response.text.strip()
@@ -244,6 +242,10 @@ if st.button("🚀 세특 초안 생성하기", type="primary", use_container_wi
 if st.session_state.current_result:
     res_text = st.session_state.current_result
     
+    # 💡 V37 핵심 2: 나이스 입력 불가 특수기호(LaTeX 수식 기호) 물리적 멸균
+    res_text = re.sub(r'[\$\^_\\]', '', res_text)  # $, ^, _, \ 완전 삭제
+    res_text = res_text.replace("{", "").replace("}", "")
+
     # 1. 마크다운 기호 및 줄바꿈 물리적 파괴
     res_text = res_text.replace("**", "").replace("*", "").replace("#", "")
     res_text = re.sub(r'\n+', ' ', res_text).strip()
@@ -266,7 +268,7 @@ if st.session_state.current_result:
     res_text = re.sub(r'([가-힣]+)있습니다\.', r'\1있음.', res_text)
     res_text = re.sub(r'([가-힣]+)습니다\.', r'\1음.', res_text)
 
-    # 💡 V36 핵심 2: 금지어 및 학교 부적합 어휘 강제 치환 (동료, 경험임 등)
+    # 4. 금지어 및 학교 부적합 어휘 강제 치환 (동료, 경험임 등)
     forbidden_replacements = {
         "이 학생은 ": "", "본 학생은 ": "", "학생은 ": "", "자신은 ": "",
         "교과세특": "기록", "세특": "기록", "생기부": "기록", "학교생활기록부": "기록",
@@ -281,7 +283,7 @@ if st.session_state.current_result:
     for bad_word, good_word in forbidden_replacements.items():
         res_text = res_text.replace(bad_word, good_word)
 
-    # 4. 진정한 문장 단위 스마트 컷오프 (바이트 초과 방지)
+    # 5. 진정한 문장 단위 스마트 컷오프 (바이트 초과 방지)
     max_target = st.session_state.target_bytes
     if get_byte_length(res_text) > max_target:
         sentences = [s.strip() + "." for s in res_text.split('.') if s.strip()]
@@ -304,7 +306,7 @@ if st.session_state.current_result:
     st.session_state.current_result = res_text
 
     st.divider()
-    st.subheader("🎯 생성된 맞춤형 세특 (나열식 타파 및 어휘 교정 완료)")
+    st.subheader("🎯 생성된 맞춤형 세특 (실명 및 수식 완벽 차단 완료)")
     
     byte_len = get_byte_length(res_text)
     min_target = int(max_target * 0.8)
